@@ -1,36 +1,36 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# yoppy さんの自己紹介ランディングページ
 
-## Getting Started
+千葉工業大学「web3/AI概論」課題用の自己紹介LPです。
+「静かな夜の星空」をテーマに、Next.js と Tailwind CSS を使用して作成されています。
 
-First, run the development server:
+## 技術スタック
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- Next.js 16 (App Router)
+- TypeScript
+- Tailwind CSS v4
+- framer-motion (スクロールアニメーション)
+- Canvas API (星空背景)
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## ローカル開発手順
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. 依存関係のインストール
+   ```bash
+   npm install
+   ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+2. 開発サーバーの起動
+   ```bash
+   npm run dev
+   ```
 
-## Learn More
+3. ブラウザで [http://localhost:3000](http://localhost:3000) を開いて確認してください。
 
-To learn more about Next.js, take a look at the following resources:
+## デプロイ方法
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+このプロジェクトはそのまま Vercel にデプロイ可能です。
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. このリポジトリを GitHub に push します
+2. Vercel のダッシュボードから `Add New...` > `Project` を選択
+3. 当該リポジトリを Import します
+4. フレームワークは自動的に `Next.js` と認識されるため、そのまま `Deploy` ボタンを押すだけで公開できます。
+   変更を `main` ブランチに push するたびに、自動でデプロイが実行されます。
