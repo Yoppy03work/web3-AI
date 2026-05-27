@@ -1,7 +1,10 @@
 import type { RawItem } from "./types";
 
 const API_URL = "https://api.anthropic.com/v1/messages";
-const DEFAULT_MODEL = "claude-haiku-4-5";
+// Use the dated model ID — Anthropic accepts both, but the alias form has
+// occasionally returned 404 from the Messages API. The dated ID is the most
+// reliable. Override via LLM_MODEL env if you want a different snapshot.
+const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
 const ANTHROPIC_VERSION = "2023-06-01";
 const REQUEST_TIMEOUT_MS = 25_000;
 
@@ -89,8 +92,13 @@ export async function summarizeBatch(items: RawItem[]): Promise<Summary[]> {
     });
 
     if (!res.ok) {
+      // Read the body so the Vercel log tells us exactly why (404 wrong
+      // model, 401 bad key, 429 rate limit, 529 overloaded, ...).
+      const body = await res.text().catch(() => "<unreadable body>");
       // eslint-disable-next-line no-console
-      console.warn(`[summarize] Anthropic HTTP ${res.status}; falling back`);
+      console.warn(
+        `[summarize] Anthropic HTTP ${res.status} (model=${model}); body: ${body.slice(0, 500)}`,
+      );
       return fallbackSummaries(items);
     }
 
