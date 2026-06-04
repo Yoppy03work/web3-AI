@@ -4,10 +4,33 @@
 // Graceful: if SLACK_WEBHOOK_URL is unset, this is a no-op. Failures are
 // logged but never break the API response.
 
-import type { Digest } from "./types";
+import type { CvssSeverity, Digest, DigestItem } from "./types";
+import { topSeverity } from "./cve";
 
 export function notifyEnabled(): boolean {
   return !!process.env.SLACK_WEBHOOK_URL;
+}
+
+const SEV_RANK: Record<CvssSeverity, number> = {
+  CRITICAL: 0,
+  HIGH: 1,
+  MEDIUM: 2,
+  LOW: 3,
+  NONE: 4,
+};
+
+// Optional SLACK_MIN_SEVERITY ("CRITICAL"|"HIGH"|"MEDIUM"|"LOW"). When set, the
+// post only lists items whose top CVE meets that bar — "重大のみ通知". Returns
+// null when unset (= notify everything).
+function minSeverity(): CvssSeverity | null {
+  const v = process.env.SLACK_MIN_SEVERITY?.trim().toUpperCase();
+  if (v && v in SEV_RANK) return v as CvssSeverity;
+  return null;
+}
+
+function meetsSeverity(it: DigestItem, min: CvssSeverity): boolean {
+  const s = topSeverity(it.cves ?? []);
+  return s != null && SEV_RANK[s] <= SEV_RANK[min];
 }
 
 // Public base URL for article links in the message.
@@ -36,12 +59,35 @@ export async function notifySlack(digest: Digest): Promise<boolean> {
   if (!url) return false;
 
   const base = siteUrl();
-  const top = digest.items.slice(0, 6);
 
+  // "重大のみ通知": when SLACK_MIN_SEVERITY is set, only notify if there are
+  // items at/above that severity, and list just those. No qualifying items
+  // → skip the post entirely (don't spam an all-clear every run).
+  const min = minSeverity();
+  let pool = digest.items;
+  if (min) {
+    pool = digest.items.filter((it) => meetsSeverity(it, min));
+    if (pool.length === 0) {
+      // eslint-disable-next-line no-console
+      console.log(`[notify] no items >= ${min}; skipping Slack post`);
+      return false;
+    }
+  }
+  const top = pool.slice(0, 6);
+
+  const SEV_EMOJI: Record<CvssSeverity, string> = {
+    CRITICAL: "🔴",
+    HIGH: "🟠",
+    MEDIUM: "🟡",
+    LOW: "⚪",
+    NONE: "",
+  };
   const lines = top.map((it, i) => {
     const why = it.whyJa ? `  — ${esc(it.whyJa)}` : "";
     const badge = KIND_LABEL[it.kind] ? `［${KIND_LABEL[it.kind]}］` : "";
-    return `${i + 1}. <${base}/article/${it.id}|${esc(it.title)}>  _${esc(
+    const sev = topSeverity(it.cves ?? []);
+    const sevTag = sev && SEV_EMOJI[sev] ? `${SEV_EMOJI[sev]} ` : "";
+    return `${i + 1}. ${sevTag}<${base}/article/${it.id}|${esc(it.title)}>  _${esc(
       it.source,
     )}_${badge ? ` ${badge}` : ""}${why}`;
   });

@@ -1,5 +1,5 @@
 import { articleId } from "./id";
-import { extractCveIds, fetchCvss } from "./cve";
+import { extractCveIds, fetchCvss, topSeverity } from "./cve";
 import { diversify, fetchAllFeeds } from "./rss";
 import { SOURCES, TAGS, tagsFor } from "./sources";
 import {
@@ -80,6 +80,37 @@ function appliedTagOrder(items: DigestItem[]): string[] {
   return Array.from(seen);
 }
 
+function maxCvssScore(it: DigestItem): number {
+  let best = -1;
+  for (const c of it.cves ?? []) {
+    if (typeof c.score === "number" && c.score > best) best = c.score;
+  }
+  return best;
+}
+
+// 0 = CRITICAL, 1 = HIGH, 2 = everything else. Only CRITICAL/HIGH get boosted;
+// MEDIUM/LOW/none stay together so minor CVEs don't outrank breaking news.
+function severityTier(it: DigestItem): number {
+  const s = topSeverity(it.cves ?? []);
+  if (s === "CRITICAL") return 0;
+  if (s === "HIGH") return 1;
+  return 2;
+}
+
+function sortBySeverity(items: DigestItem[]): void {
+  const ts = (it: DigestItem) => (it.publishedAt ? Date.parse(it.publishedAt) : 0);
+  items.sort((a, b) => {
+    const ta = severityTier(a);
+    const tb = severityTier(b);
+    if (ta !== tb) return ta - tb;
+    if (ta < 2) {
+      const d = maxCvssScore(b) - maxCvssScore(a);
+      if (d !== 0) return d;
+    }
+    return ts(b) - ts(a); // recency
+  });
+}
+
 // Resolve CVSS for a per-item list of CVE IDs. Cache-first; only a bounded
 // number of cache-misses are fetched from NVD this run (rate-limit friendly).
 // Unfetched IDs are still returned (score/severity null) so the UI can at least
@@ -146,6 +177,11 @@ async function buildDigest(): Promise<Digest> {
       cves: cvesByItem[i],
     };
   });
+
+  // Severity-aware ordering: float CRITICAL then HIGH CVE items to the top
+  // (by CVSS score), keep everything else in its existing recency order.
+  // This surfaces serious vulns without burying general news under minor CVEs.
+  sortBySeverity(items);
 
   const generatedAt = new Date().toISOString();
 
