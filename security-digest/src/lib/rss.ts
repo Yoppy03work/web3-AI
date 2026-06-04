@@ -122,7 +122,7 @@ function isAtom(xml: string): boolean {
   return hasEntry && !hasItem;
 }
 
-function parseRssItem(xml: string, sourceName: string): RawItem | null {
+function parseRssItem(xml: string, source: Source): RawItem | null {
   const title = cleanText(pickFirstTag(xml, "title"), 240);
   // RSS link is element text, not an attribute.
   const linkRaw = pickFirstTag(xml, "link");
@@ -138,7 +138,8 @@ function parseRssItem(xml: string, sourceName: string): RawItem | null {
     pickFirstTag(xml, "updated");
   if (!title || !link) return null;
   return {
-    source: sourceName,
+    source: source.name,
+    kind: source.kind,
     title,
     link,
     excerpt: cleanText(desc, EXCERPT_MAX),
@@ -146,7 +147,7 @@ function parseRssItem(xml: string, sourceName: string): RawItem | null {
   };
 }
 
-function parseAtomEntry(xml: string, sourceName: string): RawItem | null {
+function parseAtomEntry(xml: string, source: Source): RawItem | null {
   const title = cleanText(pickFirstTag(xml, "title"), 240);
   const link = pickAtomLink(xml);
   const desc =
@@ -159,7 +160,8 @@ function parseAtomEntry(xml: string, sourceName: string): RawItem | null {
     pickFirstTag(xml, "dc:date");
   if (!title || !link) return null;
   return {
-    source: sourceName,
+    source: source.name,
+    kind: source.kind,
     title,
     link: cleanText(link, 2048),
     excerpt: cleanText(desc, EXCERPT_MAX),
@@ -167,16 +169,16 @@ function parseAtomEntry(xml: string, sourceName: string): RawItem | null {
   };
 }
 
-export function parseFeed(xml: string, sourceName: string): RawItem[] {
+export function parseFeed(xml: string, source: Source): RawItem[] {
   const items: RawItem[] = [];
   if (isAtom(xml)) {
     for (const entry of splitItems(xml, "entry")) {
-      const parsed = parseAtomEntry(entry, sourceName);
+      const parsed = parseAtomEntry(entry, source);
       if (parsed) items.push(parsed);
     }
   } else {
     for (const item of splitItems(xml, "item")) {
-      const parsed = parseRssItem(item, sourceName);
+      const parsed = parseRssItem(item, source);
       if (parsed) items.push(parsed);
     }
   }
@@ -197,7 +199,7 @@ async function fetchOne(source: Source): Promise<{ items: RawItem[]; failed: boo
     });
     if (!res.ok) return { items: [], failed: true };
     const xml = await res.text();
-    return { items: parseFeed(xml, source.name), failed: false };
+    return { items: parseFeed(xml, source), failed: false };
   } catch {
     return { items: [], failed: true };
   } finally {
@@ -244,4 +246,35 @@ export async function fetchAllFeeds(
   });
 
   return { items: deduped, failedSources: failed };
+}
+
+// High-volume feeds (arXiv announces ~80 papers/day with fresh timestamps)
+// would otherwise dominate a purely date-sorted top-N and crowd out news.
+// This keeps the date ordering but caps how many consecutive slots any single
+// source may take, producing a varied front page.
+export function diversify(
+  items: RawItem[],
+  limit: number,
+  perSourceCap: number,
+): RawItem[] {
+  const picked: RawItem[] = [];
+  const used = new Map<string, number>();
+  const overflow: RawItem[] = [];
+  for (const it of items) {
+    if (picked.length >= limit) break;
+    const n = used.get(it.source) ?? 0;
+    if (n < perSourceCap) {
+      picked.push(it);
+      used.set(it.source, n + 1);
+    } else {
+      overflow.push(it);
+    }
+  }
+  // If the cap left us short of `limit` (few sources had fresh items), backfill
+  // from the overflow in date order so we always return up to `limit`.
+  for (const it of overflow) {
+    if (picked.length >= limit) break;
+    picked.push(it);
+  }
+  return picked;
 }

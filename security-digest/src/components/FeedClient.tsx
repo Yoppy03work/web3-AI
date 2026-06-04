@@ -12,6 +12,12 @@ type Props = {
 
 const ALL = "__all__";
 
+function kindBadge(kind: string): { label: string; cls: string } | null {
+  if (kind === "paper") return { label: "論文", cls: "k-paper" };
+  if (kind === "research") return { label: "研究", cls: "k-research" };
+  return null;
+}
+
 function relativeJa(iso: string | null): string {
   if (!iso) return "日時不明";
   const t = Date.parse(iso);
@@ -76,7 +82,13 @@ export default function FeedClient({ items, tags, llmEnabled }: Props) {
           {visible.map((it) => (
             <li key={it.id} className="card">
               <div className="card-head">
-                <span className="src">{it.source}</span>
+                <span className="src">
+                  {it.source}
+                  {(() => {
+                    const b = kindBadge(it.kind);
+                    return b ? <span className={`kind-badge ${b.cls}`}>{b.label}</span> : null;
+                  })()}
+                </span>
                 <span className="when">{relativeJa(it.publishedAt)}</span>
               </div>
               <h2 className="card-title">

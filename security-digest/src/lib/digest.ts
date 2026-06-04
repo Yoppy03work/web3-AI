@@ -1,25 +1,24 @@
 import { articleId } from "./id";
-import { fetchAllFeeds } from "./rss";
+import { diversify, fetchAllFeeds } from "./rss";
 import { SOURCES, TAGS, tagsFor } from "./sources";
 import {
-  kvGetJson,
-  kvSetJson,
-  storeEnabled,
-  zaddDate,
-  zrangeDatesDesc,
-} from "./store";
+  dbEnabled,
+  getArticleRow,
+  getDigestSnapshot,
+  getLatestSnapshot,
+  listSnapshotDates,
+  patchArticleRow,
+  saveDigest,
+} from "./db";
 import { llmEnabled, summarizeBatch } from "./summarize";
 import type { Digest, DigestItem, RawItem } from "./types";
 
 const DEFAULT_MAX_ITEMS = 12;
 const DEFAULT_TTL_MINUTES = 360;
 const MAX_ARCHIVE_DAYS = 90;
-
-// KV key helpers
-const KEY_LATEST = "digest:latest";
-const KEY_DATES = "digest:dates"; // sorted set, score = epoch UTC midnight
-const keyByDate = (d: string) => `digest:${d}`;
-const keyArticle = (id: string) => `article:${id}`;
+// Cap per source in the displayed/summarized top-N so a high-volume feed
+// (arXiv announces ~80/day) can't crowd out everything else.
+const PER_SOURCE_CAP = 4;
 
 function readInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -39,7 +38,7 @@ function jstDate(iso: string): string {
   return fmt.format(new Date(iso));
 }
 
-// In-memory layer in front of KV. Saves a Redis round-trip for hot pages.
+// In-memory layer in front of SQL. Saves a round-trip for hot pages.
 // Note: serverless functions cold-start; this is best-effort within an instance.
 type CacheState = {
   data: Digest | null;
@@ -66,16 +65,17 @@ async function buildDigest(): Promise<Digest> {
 
   const { items: raw, failedSources } = await fetchAllFeeds(SOURCES);
 
-  const tagged: Array<RawItem & { tags: string[] }> = raw.map((it) => ({
+  // Keep the front page varied: cap per source before taking the top N.
+  const top: RawItem[] = diversify(raw, maxItems, PER_SOURCE_CAP);
+
+  const tagged = top.map((it) => ({
     ...it,
     tags: tagsFor(`${it.title} ${it.excerpt}`),
   }));
 
-  const top = tagged.slice(0, maxItems);
-
   // Assign stable IDs (SHA-256 of canonical link, first 10 hex).
   const withIds = await Promise.all(
-    top.map(async (it) => ({ ...it, id: await articleId(it.link) })),
+    tagged.map(async (it) => ({ ...it, id: await articleId(it.link) })),
   );
 
   const summaries = await summarizeBatch(withIds);
@@ -103,23 +103,12 @@ async function buildDigest(): Promise<Digest> {
   };
 
   // Persist (best-effort; failures are logged but don't break the response).
-  await persistDigest(digest).catch((err) => {
+  await saveDigest(digest).catch((err) => {
     // eslint-disable-next-line no-console
     console.warn("[digest] persist failed:", err);
   });
 
   return digest;
-}
-
-async function persistDigest(d: Digest): Promise<void> {
-  if (!storeEnabled()) return;
-  await Promise.all([
-    kvSetJson(KEY_LATEST, d),
-    kvSetJson(keyByDate(d.date), d),
-    zaddDate(KEY_DATES, d.date),
-    // Per-article record so the detail page can read without scanning a digest.
-    ...d.items.map((it) => kvSetJson(keyArticle(it.id), it)),
-  ]);
 }
 
 export async function getDigest(force = false): Promise<Digest> {
@@ -130,14 +119,13 @@ export async function getDigest(force = false): Promise<Digest> {
     return cache.data;
   }
 
-  // If we don't have anything in memory but KV holds a recent snapshot, use it.
-  // This makes cold-started instances feel "instant" for the visitor.
-  if (!force && !cache.data && storeEnabled()) {
-    const fromKv = await kvGetJson<Digest>(KEY_LATEST).catch(() => null);
-    if (fromKv) {
-      cache.data = fromKv;
+  // Cold instance with a recent snapshot in SQL: serve it instantly.
+  if (!force && !cache.data && dbEnabled()) {
+    const snap = await getLatestSnapshot().catch(() => null);
+    if (snap) {
+      cache.data = snap;
       cache.expiresAt = now + ttlMs;
-      return fromKv;
+      return snap;
     }
   }
 
@@ -160,15 +148,15 @@ export async function getDigest(force = false): Promise<Digest> {
 // ---------------- archive / detail loaders ----------------
 
 export async function getArticle(id: string): Promise<DigestItem | null> {
-  if (storeEnabled()) {
-    const fromKv = await kvGetJson<DigestItem>(keyArticle(id)).catch(() => null);
-    if (fromKv) return fromKv;
-  }
-  // Fall back to the in-memory latest digest (useful for dev without KV).
+  const fromDb = await getArticleRow(id).catch(() => null);
+  if (fromDb) return fromDb;
+
+  // Fall back to the in-memory latest digest (useful for dev without SQL).
   if (cache.data) {
     const hit = cache.data.items.find((it) => it.id === id);
     if (hit) return hit;
   }
+
   // Last resort: rebuild so a deep-link doesn't 404 on a cold instance.
   const fresh = await getDigest();
   return fresh.items.find((it) => it.id === id) ?? null;
@@ -183,25 +171,19 @@ export async function patchArticle(
     const it = cache.data.items.find((x) => x.id === id);
     if (it) Object.assign(it, patch);
   }
-  if (!storeEnabled()) return;
-  const cur = await kvGetJson<DigestItem>(keyArticle(id));
-  if (!cur) return;
-  Object.assign(cur, patch);
-  await kvSetJson(keyArticle(id), cur);
+  await patchArticleRow(id, patch);
 }
 
 export async function listArchiveDates(): Promise<string[]> {
-  if (!storeEnabled()) {
-    // Without KV we only know "today" (the in-memory snapshot).
-    return cache.data ? [cache.data.date] : [];
-  }
-  return zrangeDatesDesc(KEY_DATES, MAX_ARCHIVE_DAYS).catch(() => []);
+  const fromDb = await listSnapshotDates(MAX_ARCHIVE_DAYS).catch(() => []);
+  if (fromDb.length) return fromDb;
+  // Without SQL we only know "today" (the in-memory snapshot).
+  return cache.data ? [cache.data.date] : [];
 }
 
 export async function getDigestByDate(date: string): Promise<Digest | null> {
-  if (!storeEnabled()) {
-    if (cache.data && cache.data.date === date) return cache.data;
-    return null;
-  }
-  return kvGetJson<Digest>(keyByDate(date)).catch(() => null);
+  const fromDb = await getDigestSnapshot(date).catch(() => null);
+  if (fromDb) return fromDb;
+  if (cache.data && cache.data.date === date) return cache.data;
+  return null;
 }

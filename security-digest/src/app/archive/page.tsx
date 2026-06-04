@@ -56,7 +56,14 @@ export default async function ArchivePage() {
                   {digest.items.map((it) => (
                     <li key={it.id} className="archive-item">
                       <Link href={`/article/${it.id}`}>
-                        <span className="archive-src">{it.source}</span>
+                        <span className="archive-src">
+                          {it.source}
+                          {it.kind === "paper" ? (
+                            <span className="kind-badge k-paper">論文</span>
+                          ) : it.kind === "research" ? (
+                            <span className="kind-badge k-research">研究</span>
+                          ) : null}
+                        </span>
                         <span className="archive-title">{it.title}</span>
                       </Link>
                       {it.tags.length > 0 ? (
