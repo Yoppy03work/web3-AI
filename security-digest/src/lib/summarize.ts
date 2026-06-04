@@ -138,3 +138,67 @@ export async function summarizeBatch(items: RawItem[]): Promise<Summary[]> {
     clearTimeout(timer);
   }
 }
+
+// Translate a long English body into natural Japanese. Used by the article
+// detail page (lazy). Returns null on failure / missing key — callers should
+// fall back to displaying the original English.
+export async function translateLong(text: string): Promise<string | null> {
+  if (!llmEnabled()) return null;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  const model = process.env.LLM_MODEL?.trim() || DEFAULT_MODEL;
+  const apiKey = process.env.ANTHROPIC_API_KEY!;
+
+  const prompt = [
+    "以下の英語記事本文を自然な日本語に翻訳してください。",
+    "・段落構造は維持（空行で段落区切り）。Markdown 装飾は使わない。",
+    "・固有名詞 / 製品名 / CVE 番号 / URL は原文ママ。",
+    "・前置きや「翻訳結果:」のような添え書きは禁止。本文のみ返す。",
+    "",
+    "---原文---",
+    trimmed,
+  ].join("\n");
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 4096,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[translateLong] Anthropic HTTP ${res.status} (model=${model}); body: ${body.slice(0, 300)}`,
+      );
+      return null;
+    }
+    const json = (await res.json()) as {
+      content?: Array<{ type?: string; text?: string }>;
+    };
+    const out = (json.content ?? [])
+      .map((b) => (b.type === "text" ? (b.text ?? "") : ""))
+      .join("\n")
+      .trim();
+    return out || null;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[translateLong] error:", err);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
