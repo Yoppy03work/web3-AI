@@ -80,30 +80,95 @@ function stripJunk(html: string): string {
   return s;
 }
 
-function findMainContainer(html: string): string {
-  // Try, in order: <article>, common semantic IDs, <main>, then whole body.
-  const tries: RegExp[] = [
-    /<article\b[^>]*>([\s\S]*?)<\/article\s*>/i,
-    /<div\b[^>]*\bid\s*=\s*["']?(?:content|main|article-body|post-content|entry-content)\b[^>]*>([\s\S]*?)<\/div\s*>/i,
-    /<main\b[^>]*>([\s\S]*?)<\/main\s*>/i,
-    /<body\b[^>]*>([\s\S]*?)<\/body\s*>/i,
+// Cut everything from the first "related / recommended / comments / author bio /
+// newsletter / navigation" marker onward. These trailing sections live inside
+// the article container on many sites (e.g. BleepingComputer's
+// cz-related-article-wrapp + "Related Articles:") and otherwise leak unrelated
+// headlines into the body.
+function cutTrailingSections(html: string): string {
+  // Only strong, reliably-trailing markers — avoid generic ones like "share"
+  // or "newsletter" that can appear *above* the article and chop the body.
+  // (Per-paragraph boilerplate filtering handles those safely instead.)
+  const markers: RegExp[] = [
+    /<[^>]+class\s*=\s*["'][^"']*(?:related-article|cz-related|related-posts|related-stories|recommended-|cz-story-navigation|cz-post-comment|cz-full-bio)/i,
+    /<h[1-6][^>]*>\s*(?:related articles?|related news|related stories|you may also like|more from)/i,
+    /<(?:section|div)[^>]+(?:id|class)\s*=\s*["'][^"']*comments?["' ]/i,
   ];
-  for (const re of tries) {
+  let cut = html.length;
+  for (const re of markers) {
     const m = re.exec(html);
-    if (m && m[1].length > 200) return m[1];
+    if (m && m.index < cut && m.index > 400) cut = m.index;
   }
-  return html;
+  return cut < html.length ? html.slice(0, cut) : html;
+}
+
+// Candidate article containers, by <p> richness. Matches both id and class
+// forms (BleepingComputer uses class="articleBody", WordPress entry-content,
+// etc.). The first matching close tag truncates nested layouts, so we also keep
+// the whole document as a candidate and pick whichever yields the most text.
+function candidateContainers(html: string): string[] {
+  const out: string[] = [];
+  const res: RegExp[] = [
+    /<article\b[^>]*>([\s\S]*?)<\/article\s*>/gi,
+    /<main\b[^>]*>([\s\S]*?)<\/main\s*>/gi,
+    /<div\b[^>]*\b(?:id|class)\s*=\s*["'][^"']*(?:articlebody|article-body|article_body|article-content|post-content|entry-content|story-body|storycontent|post-body|cz-news)[^"']*["'][^>]*>([\s\S]*?)<\/div\s*>/gi,
+  ];
+  for (const re of res) {
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+      if (m[1] && m[1].length > 200) out.push(m[1]);
+    }
+  }
+  out.push(html); // whole-document fallback
+  return out;
+}
+
+const BOILERPLATE_RE =
+  /\b(subscribe|newsletter|sign up|cookie|all rights reserved|read more|follow us|share this|advertisement|sponsored content|©|terms of (?:use|service)|privacy policy|create a free account|already have an account)\b/i;
+
+function isBoilerplate(p: string): boolean {
+  if (p.length < 40) return true;
+  return BOILERPLATE_RE.test(p);
 }
 
 function paragraphsFrom(html: string): string[] {
   const re = /<p\b[^>]*>([\s\S]*?)<\/p\s*>/gi;
   const out: string[] = [];
+  const seen = new Set<string>();
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
     const txt = cleanInline(m[1]);
-    if (txt.length >= 40) out.push(txt);
+    if (isBoilerplate(txt)) continue;
+    if (seen.has(txt)) continue; // de-dupe repeated paragraphs
+    seen.add(txt);
+    out.push(txt);
   }
   return out;
+}
+
+// Best container = the one whose paragraphs total the most text.
+function bestParagraphs(html: string): string[] {
+  let best: string[] = [];
+  let bestLen = 0;
+  for (const c of candidateContainers(html)) {
+    const paras = paragraphsFrom(c);
+    const len = paras.reduce((n, p) => n + p.length, 0);
+    if (len > bestLen) {
+      best = paras;
+      bestLen = len;
+    }
+  }
+  return best;
+}
+
+// Last-resort body: the page's meta/og description (one or two sentences).
+function metaDescription(html: string): string | null {
+  const re =
+    /<meta[^>]+(?:property\s*=\s*["']og:description["']|name\s*=\s*["']description["'])[^>]*content\s*=\s*["']([^"']+)["']/i;
+  const m = re.exec(html);
+  if (!m) return null;
+  const txt = cleanInline(m[1]);
+  return txt.length >= 40 ? txt : null;
 }
 
 // SSRF guard: article links come from feeds (attacker-influenceable), so before
@@ -168,17 +233,16 @@ export async function extractBody(url: string): Promise<string | null> {
     });
     if (!res.ok) return null;
     const html = await res.text();
-    const cleaned = stripJunk(html);
-    const main = findMainContainer(cleaned);
-    let paras = paragraphsFrom(main);
-    // The id-div / article container regexes stop at the first matching close
-    // tag, which truncates nested layouts. If the container yielded too little,
-    // fall back to harvesting <p> across the whole cleaned document.
-    if (paras.length < 3) {
-      const all = paragraphsFrom(cleaned);
-      if (all.length > paras.length) paras = all;
+    // 1) drop trailing related/comments/bio sections, 2) strip nav/aside/etc.,
+    // 3) pick the richest article container's paragraphs (boilerplate-filtered).
+    const cleaned = stripJunk(cutTrailingSections(html));
+    const paras = bestParagraphs(cleaned);
+
+    if (paras.length === 0) {
+      // Nothing parseable (often JS-rendered pages) — fall back to the page's
+      // meta/og description so the detail page still shows *something*.
+      return metaDescription(html);
     }
-    if (paras.length === 0) return null;
     const joined = paras.join("\n\n");
     return joined.length > BODY_MAX ? joined.slice(0, BODY_MAX) + "…" : joined;
   } catch {
