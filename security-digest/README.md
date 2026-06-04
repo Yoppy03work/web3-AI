@@ -70,7 +70,8 @@ npm run build && npm start
 | `LLM_MODEL` | Claude モデル ID（日付付き推奨） | `claude-haiku-4-5-20251001` |
 | `DIGEST_MAX_ITEMS` | 1 回の更新で要約する記事数 | `12` |
 | `DIGEST_TTL_MINUTES` | インメモリキャッシュの TTL（分） | `360` |
-| `REFRESH_TOKEN` | `/api/digest?refresh=1` の保護トークン。空ならノーガード | （空） |
+| `REFRESH_TOKEN` | 手動 `/api/digest?refresh=1` に必要なトークン | （空） |
+| `CRON_SECRET` | 設定すると Vercel Cron が `Authorization: Bearer` で自動認証。本番推奨。どちらか設定時、未認証の refresh は 401 | （空） |
 | `SLACK_WEBHOOK_URL` | Slack Incoming Webhook。設定すると毎朝の更新時に要約を投稿 | （空） |
 | `SITE_URL` | Slack メッセージ内リンクの基準 URL（Vercel では自動検出） | （空） |
 | `TURSO_DATABASE_URL` | Turso DB の URL（`libsql://` でも可、自動で https に変換） | （空） |
