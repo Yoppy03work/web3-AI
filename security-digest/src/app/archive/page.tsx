@@ -51,7 +51,23 @@ export default async function ArchivePage() {
         <ul className="archive-list">
           {snapshots.map(({ date, digest }) => (
             <li key={date} className="archive-day">
-              <h2 className="archive-date">{jpDate(date)}</h2>
+              <h2 className="archive-date">
+                {jpDate(date)}
+                {digest?.edition ? (
+                  <span className="pill edition">
+                    {digest.edition === "morning" ? "🌅 朝刊" : "🌙 夕刊"}
+                  </span>
+                ) : null}
+              </h2>
+              {digest?.tldr ? (
+                <div className="tldr tldr-sm">
+                  <div className="tldr-body">
+                    {digest.tldr.split("\n").map((line, i) => (
+                      <p key={i}>{line}</p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               {digest ? (
                 <ul className="archive-items">
                   {digest.items.map((it) => (

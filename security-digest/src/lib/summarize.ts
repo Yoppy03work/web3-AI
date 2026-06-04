@@ -231,3 +231,75 @@ export async function translateLong(text: string): Promise<string | null> {
     clearTimeout(timer);
   }
 }
+
+// Roll up the run's items into a short Japanese TL;DR (3 bullet lines). One LLM
+// call. Returns null on missing key / failure — the UI just hides the box.
+export async function summarizeTldr(
+  items: Array<{ title: string; source: string; summaryJa: string | null; excerpt: string }>,
+): Promise<string | null> {
+  if (!llmEnabled() || items.length === 0) return null;
+
+  const model = process.env.LLM_MODEL?.trim() || DEFAULT_MODEL;
+  const apiKey = process.env.ANTHROPIC_API_KEY!;
+
+  const list = items
+    .slice(0, 12)
+    .map((it, i) => `#${i} [${it.source}] ${it.title} — ${(it.summaryJa || it.excerpt || "").slice(0, 160)}`)
+    .join("\n");
+
+  const prompt = [
+    "あなたはセキュリティ編集者です。以下は本日のダイジェスト記事一覧です。",
+    "全体を俯瞰し、今おさえるべき要点を日本語で『3行』にまとめてください。",
+    "・各行は「・」で始める箇条書き、1行あたり全角40〜60字程度。",
+    "・最も重要・影響範囲が広い動向を優先。固有名詞や CVE 番号は残す。",
+    "・前置きや見出しは禁止。3行のみを返す。",
+    "",
+    "---記事一覧---",
+    list,
+  ].join("\n");
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      // eslint-disable-next-line no-console
+      console.warn(`[tldr] Anthropic HTTP ${res.status}; body: ${body.slice(0, 200)}`);
+      return null;
+    }
+    const json = (await res.json()) as { content?: Array<{ type?: string; text?: string }> };
+    const out = (json.content ?? [])
+      .map((b) => (b.type === "text" ? (b.text ?? "") : ""))
+      .join("\n")
+      .trim();
+    // Keep only bullet lines if the model added stray prose; cap at 3.
+    const lines = out
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    const bullets = lines.filter((l) => l.startsWith("・"));
+    const chosen = (bullets.length ? bullets : lines).slice(0, 3);
+    return chosen.length ? chosen.join("\n") : null;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[tldr] error:", err);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
