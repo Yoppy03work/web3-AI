@@ -15,7 +15,7 @@
 //   resp: { results: [ {type:"ok", response:{type:"execute",
 //            result:{cols:[{name}], rows:[[{type,value}]]}}}, ... ] }
 
-import type { DigestItem, Digest, SourceKind } from "./types";
+import type { CveRef, CvssSeverity, DigestItem, Digest, SourceKind } from "./types";
 
 const URL_ENV = "TURSO_DATABASE_URL";
 const TOKEN_ENV = "TURSO_AUTH_TOKEN";
@@ -135,6 +135,7 @@ async function pipeline(stmts: Stmt[]): Promise<Row[][]> {
 const memArticles = new Map<string, DigestItem>();
 const memDigests = new Map<string, { generatedAt: string; payload: Digest }>();
 const memBookmarks = new Map<string, string>(); // id -> created_at ISO
+const memCve = new Map<string, CveRef>(); // CVE-ID -> enriched ref
 
 // ---------------- schema ----------------
 
@@ -185,7 +186,30 @@ async function ensureSchema(): Promise<void> {
         created_at TEXT NOT NULL
       )`,
     },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS cve_cache (
+        id TEXT PRIMARY KEY,
+        score REAL,
+        severity TEXT,
+        vector TEXT,
+        fetched_at TEXT NOT NULL
+      )`,
+    },
   ]);
+
+  // Idempotent migrations for columns added after the initial release.
+  // (CREATE TABLE IF NOT EXISTS won't add columns to a pre-existing table.)
+  for (const sql of ["ALTER TABLE articles ADD COLUMN cves TEXT"]) {
+    try {
+      await pipeline([{ sql }]);
+    } catch (err) {
+      const msg = String(err);
+      if (!/duplicate column name/i.test(msg)) {
+        // eslint-disable-next-line no-console
+        console.warn("[db] migration skipped:", msg);
+      }
+    }
+  }
 
   // Full-text search index (separate pipeline so a missing FTS5 build can't
   // break the core tables). trigram tokenizer works for Japanese (no spaces).
@@ -224,7 +248,25 @@ function rowToItem(r: Row): DigestItem {
     body: r.body == null ? null : String(r.body),
     bodyJa: r.body_ja == null ? null : String(r.body_ja),
     llm: Number(r.llm) === 1,
+    cves: r.cves ? safeCves(String(r.cves)) : [],
   };
+}
+
+function safeCves(s: string): CveRef[] {
+  try {
+    const v = JSON.parse(s);
+    if (!Array.isArray(v)) return [];
+    return v
+      .filter((x) => x && typeof x.id === "string")
+      .map((x) => ({
+        id: String(x.id),
+        score: typeof x.score === "number" ? x.score : null,
+        severity: (x.severity ?? null) as CvssSeverity | null,
+        vector: typeof x.vector === "string" ? x.vector : null,
+      }));
+  } catch {
+    return [];
+  }
 }
 
 function safeArray(s: string): string[] {
@@ -263,14 +305,14 @@ export async function saveDigest(d: Digest): Promise<void> {
     stmts.push({
       sql: `INSERT INTO articles
         (id, source, kind, title, link, excerpt, published_at, digest_date,
-         tags, summary_ja, why_ja, body, body_ja, llm, first_seen)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         tags, summary_ja, why_ja, body, body_ja, llm, first_seen, cves)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
           source=excluded.source, kind=excluded.kind, title=excluded.title,
           link=excluded.link, excerpt=excluded.excerpt,
           published_at=excluded.published_at, digest_date=excluded.digest_date,
           tags=excluded.tags, summary_ja=excluded.summary_ja,
-          why_ja=excluded.why_ja, llm=excluded.llm`,
+          why_ja=excluded.why_ja, llm=excluded.llm, cves=excluded.cves`,
       args: [
         it.id,
         it.source,
@@ -287,6 +329,7 @@ export async function saveDigest(d: Digest): Promise<void> {
         it.bodyJa,
         it.llm ? 1 : 0,
         d.generatedAt,
+        JSON.stringify(it.cves ?? []),
       ],
     });
   }
@@ -468,6 +511,53 @@ export async function searchArticles(
     },
   ]);
   return (rows ?? []).map(rowToItem);
+}
+
+// ---------------- CVE cache ----------------
+
+export async function getCveCache(ids: string[]): Promise<Map<string, CveRef>> {
+  const out = new Map<string, CveRef>();
+  if (ids.length === 0) return out;
+  if (!dbEnabled()) {
+    for (const id of ids) {
+      const v = memCve.get(id);
+      if (v) out.set(id, v);
+    }
+    return out;
+  }
+  await ensureSchema();
+  const placeholders = ids.map(() => "?").join(",");
+  const [rows] = await pipeline([
+    { sql: `SELECT id, score, severity, vector FROM cve_cache WHERE id IN (${placeholders})`, args: ids },
+  ]);
+  for (const r of rows ?? []) {
+    out.set(String(r.id), {
+      id: String(r.id),
+      score: r.score == null ? null : Number(r.score),
+      severity: (r.severity == null ? null : String(r.severity)) as CveRef["severity"],
+      vector: r.vector == null ? null : String(r.vector),
+    });
+  }
+  return out;
+}
+
+export async function putCveCache(ref: CveRef): Promise<void> {
+  const now = new Date().toISOString();
+  if (!dbEnabled()) {
+    memCve.set(ref.id, ref);
+    return;
+  }
+  await ensureSchema();
+  await pipeline([
+    {
+      sql: `INSERT INTO cve_cache (id, score, severity, vector, fetched_at)
+            VALUES (?,?,?,?,?)
+            ON CONFLICT(id) DO UPDATE SET
+              score=excluded.score, severity=excluded.severity,
+              vector=excluded.vector, fetched_at=excluded.fetched_at`,
+      args: [ref.id, ref.score, ref.severity, ref.vector, now],
+    },
+  ]);
 }
 
 // ---------------- bookmarks ----------------

@@ -13,7 +13,7 @@
 
 ## ページ
 
-- `/` — 最新ダイジェスト。タグでクライアントサイドフィルタ。媒体に 論文/研究 バッジ。各カードに ☆ ブックマーク
+- `/` — 最新ダイジェスト。タグでクライアントサイドフィルタ。媒体に 論文/研究 バッジ。記事中の **CVE は CVSS スコア付きバッジ**（深刻度で色分け）。各カードに ☆ ブックマーク
 - `/article/[id]` — 記事詳細。要約 / なぜ重要 / **本文の日本語訳**（失敗時は原文）/ 原文リンク / ☆ 保存
 - `/bookmarks` — ☆ で保存した記事一覧（新しい順）
 - `/search?q=` — タイトル・要約・本文（日本語訳）を横断検索
@@ -68,6 +68,8 @@ npm run build && npm start
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | Anthropic Messages API キー。要約 + 本文翻訳の両方に使用 | （空） |
 | `LLM_MODEL` | Claude モデル ID（日付付き推奨） | `claude-haiku-4-5-20251001` |
+| `NVD_API_KEY` | CVE/CVSS 取得用の NVD APIキー（任意。無くても動く） | （空） |
+| `NVD_MAX_LOOKUPS` | 1回の更新で NVD に問い合わせる新規CVE数の上限 | `5` |
 | `DIGEST_MAX_ITEMS` | 1 回の更新で要約する記事数 | `12` |
 | `DIGEST_TTL_MINUTES` | インメモリキャッシュの TTL（分） | `360` |
 | `REFRESH_TOKEN` | 手動 `/api/digest?refresh=1` に必要なトークン | （空） |

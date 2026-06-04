@@ -15,6 +15,16 @@ export type RawItem = {
   publishedAt: string | null;
 };
 
+export type CvssSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "NONE";
+
+export type CveRef = {
+  id: string; // canonical "CVE-2024-12345"
+  // From NVD. null when not yet enriched or NVD had no score.
+  score: number | null;
+  severity: CvssSeverity | null;
+  vector: string | null;
+};
+
 export type DigestItem = RawItem & {
   id: string;
   tags: string[];
@@ -27,6 +37,8 @@ export type DigestItem = RawItem & {
   body: string | null;
   // Japanese translation of `body`. Same lazy lifecycle.
   bodyJa: string | null;
+  // CVE IDs mentioned in the article, enriched with CVSS from NVD when known.
+  cves: CveRef[];
 };
 
 export type Digest = {

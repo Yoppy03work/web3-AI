@@ -2,6 +2,7 @@ import Link from "next/link";
 import { searchArticles } from "@/lib/db";
 import { getDigest } from "@/lib/digest";
 import type { DigestItem } from "@/lib/types";
+import CveBadges from "@/components/CveBadges";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +92,7 @@ export default async function SearchPage({ searchParams }: SearchParams) {
                   <Link href={`/article/${it.id}`}>{it.title}</Link>
                 </h2>
                 {it.summaryJa ? <p className="summary">{it.summaryJa}</p> : null}
+                <CveBadges cves={it.cves} max={3} />
                 {it.tags.length > 0 ? (
                   <div className="tags">
                     {it.tags.map((t) => (
