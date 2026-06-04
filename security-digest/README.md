@@ -64,6 +64,8 @@ npm run build && npm start
 | `DIGEST_MAX_ITEMS` | 1 回の更新で要約する記事数 | `12` |
 | `DIGEST_TTL_MINUTES` | インメモリキャッシュの TTL（分） | `360` |
 | `REFRESH_TOKEN` | `/api/digest?refresh=1` の保護トークン。空ならノーガード | （空） |
+| `SLACK_WEBHOOK_URL` | Slack Incoming Webhook。設定すると毎朝の更新時に要約を投稿 | （空） |
+| `SITE_URL` | Slack メッセージ内リンクの基準 URL（Vercel では自動検出） | （空） |
 | `TURSO_DATABASE_URL` | Turso DB の URL（`libsql://` でも可、自動で https に変換） | （空） |
 | `TURSO_AUTH_TOKEN` | Turso のアクセストークン | （空） |
 
@@ -128,6 +130,14 @@ SELECT digest_date, count(*) FROM articles GROUP BY digest_date ORDER BY 1 DESC;
 
 Cron は `vercel.json` に同梱（UTC 22:00 = JST 07:00 に `/api/digest?refresh=1` を叩く）。
 `REFRESH_TOKEN` を有効にする場合は `vercel.json` の `path` も `?refresh=1&token=...` に書き換える。
+
+### Slack 通知
+
+1. https://api.slack.com/messaging/webhooks で Incoming Webhook を作成 → 通知先チャンネルを選ぶ → Webhook URL を取得
+2. Vercel の環境変数に `SLACK_WEBHOOK_URL` を追加 → Redeploy
+3. 毎朝の cron（`?refresh=1`）が発火するたびに、上位6件の要約＋「なぜ重要」＋記事リンクがそのチャンネルに届く
+
+手動で試すには `/api/digest?refresh=1`。通知を出したくない検証時は `/api/digest?refresh=1&notify=0`。
 
 > **Hobby プランの注意**: 詳細ページ初回は 本文 fetch + 翻訳で 10 秒近くかかることが
 > ある（関数タイムアウトは Hobby=10s）。タイムアウトしても次回アクセスで再試行され、
