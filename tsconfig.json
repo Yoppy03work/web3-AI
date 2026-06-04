@@ -30,5 +30,11 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "security-digest",
+    "2回目",
+    "yoppy02.-web3ai-2026",
+    "cd"
+  ]
 }
