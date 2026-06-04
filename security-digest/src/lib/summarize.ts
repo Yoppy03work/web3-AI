@@ -40,13 +40,16 @@ function buildPrompt(items: RawItem[]): string {
 
   return [
     "あなたはセキュリティニュースの編集者です。以下の英語記事それぞれについて、",
-    "日本語の要約と「なぜ重要か」の一言を作成してください。",
+    "読み応えのある日本語の要約と「なぜ重要か」の一言を作成してください。",
     "",
     "出力は **JSON 配列のみ**。Markdown のコードフェンス（```）や前置き・後置きは禁止。",
     "各要素は次の形:",
-    `  {"index": <記事の番号(整数)>, "summaryJa": "<2〜3文・全角120字程度の日本語要約>", "whyJa": "<1文・全角40字程度・なぜ重要か>"}`,
+    `  {"index": <記事の番号(整数)>, "summaryJa": "<4〜6文・全角300字程度の日本語要約>", "whyJa": "<1文・全角40字程度・なぜ重要か>"}`,
     "",
-    "・summaryJa は事実ベースで簡潔に。固有名詞は原文ママでよい。",
+    "・summaryJa は事実ベースで、何が・誰に・どう影響するか、対象製品/バージョン、",
+    "  攻撃手法や対策（パッチ有無など）まで、抜粋から分かる範囲で具体的に。全角300字程度。",
+    "・抜粋に書かれていない事実は創作しない。推測は避け、分かる範囲で書く。",
+    "・固有名詞・製品名・CVE 番号は原文ママでよい。",
     "・whyJa は読者（学生エンジニア）にとっての示唆を一言で。誇張せず、断定的すぎないトーン。",
     "・index は下の番号と必ず一致させること。",
     "",
@@ -114,7 +117,7 @@ export async function summarizeBatch(items: RawItem[]): Promise<Summary[]> {
       },
       body: JSON.stringify({
         model,
-        max_tokens: 4096,
+        max_tokens: 8192,
         messages: [{ role: "user", content: buildPrompt(items) }],
       }),
       cache: "no-store",
@@ -202,7 +205,7 @@ export async function translateLong(text: string): Promise<string | null> {
       },
       body: JSON.stringify({
         model,
-        max_tokens: 4096,
+        max_tokens: 8192,
         messages: [{ role: "user", content: prompt }],
       }),
       cache: "no-store",
