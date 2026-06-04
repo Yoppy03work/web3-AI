@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getDigestByDate, listArchiveDates, getDigest } from "@/lib/digest";
+import { getDigestByKey, listArchiveKeys, getDigest } from "@/lib/digest";
 
 export const dynamic = "force-dynamic";
 
@@ -17,14 +17,15 @@ function jpDate(d: string): string {
 }
 
 export default async function ArchivePage() {
-  // Make sure the in-memory cache is warm (so dev-without-KV at least shows today).
+  // Make sure the in-memory cache is warm (so dev-without-DB at least shows today).
   await getDigest();
 
-  const dates = await listArchiveDates();
+  const keys = await listArchiveKeys();
 
-  // Pull each day's snapshot (up to ~90). These are small JSON blobs.
+  // Pull each edition's snapshot (up to ~90). These are small JSON blobs.
+  // Each key is "YYYY-MM-DD#edition"; group by the snapshot's own date.
   const snapshots = await Promise.all(
-    dates.map(async (d) => ({ date: d, digest: await getDigestByDate(d) })),
+    keys.map(async (key) => ({ key, digest: await getDigestByKey(key) })),
   );
 
   return (
@@ -39,7 +40,7 @@ export default async function ArchivePage() {
           <span className="prompt">$</span> archive
         </h1>
         <p className="dim" style={{ marginTop: "6px" }}>
-          毎朝 07:00 JST に生成されたスナップショットの一覧。最大 90 日分。
+          朝刊（07:00 JST）と夕刊（19:00 JST）のスナップショット一覧。最大 90 版。
         </p>
       </header>
 
@@ -49,10 +50,10 @@ export default async function ArchivePage() {
         </p>
       ) : (
         <ul className="archive-list">
-          {snapshots.map(({ date, digest }) => (
-            <li key={date} className="archive-day">
+          {snapshots.map(({ key, digest }) => (
+            <li key={key} className="archive-day">
               <h2 className="archive-date">
-                {jpDate(date)}
+                {jpDate(digest?.date ?? key.split("#")[0])}
                 {digest?.edition ? (
                   <span className="pill edition">
                     {digest.edition === "morning" ? "🌅 朝刊" : "🌙 夕刊"}

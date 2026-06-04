@@ -12,6 +12,7 @@ import {
   patchArticleRow,
   putCveCache,
   saveDigest,
+  snapshotKey,
 } from "./db";
 import { llmEnabled, summarizeBatch, summarizeTldr } from "./summarize";
 import type { CveRef, Digest, DigestItem, Edition, RawItem } from "./types";
@@ -278,16 +279,17 @@ export async function patchArticle(
   await patchArticleRow(id, patch);
 }
 
-export async function listArchiveDates(): Promise<string[]> {
+// Returns snapshot KEYS ("YYYY-MM-DD#edition"), newest first.
+export async function listArchiveKeys(): Promise<string[]> {
   const fromDb = await listSnapshotDates(MAX_ARCHIVE_DAYS).catch(() => []);
   if (fromDb.length) return fromDb;
   // Without SQL we only know "today" (the in-memory snapshot).
-  return cache.data ? [cache.data.date] : [];
+  return cache.data ? [snapshotKey(cache.data)] : [];
 }
 
-export async function getDigestByDate(date: string): Promise<Digest | null> {
-  const fromDb = await getDigestSnapshot(date).catch(() => null);
+export async function getDigestByKey(key: string): Promise<Digest | null> {
+  const fromDb = await getDigestSnapshot(key).catch(() => null);
   if (fromDb) return fromDb;
-  if (cache.data && cache.data.date === date) return cache.data;
+  if (cache.data && snapshotKey(cache.data) === key) return cache.data;
   return null;
 }
