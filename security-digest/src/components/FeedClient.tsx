@@ -3,11 +3,13 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { DigestItem } from "@/lib/types";
+import BookmarkButton from "./BookmarkButton";
 
 type Props = {
   items: DigestItem[];
   tags: string[];
   llmEnabled: boolean;
+  savedIds: string[];
 };
 
 const ALL = "__all__";
@@ -34,8 +36,9 @@ function relativeJa(iso: string | null): string {
   return `${mo}ヶ月前`;
 }
 
-export default function FeedClient({ items, tags, llmEnabled }: Props) {
+export default function FeedClient({ items, tags, llmEnabled, savedIds }: Props) {
   const [active, setActive] = useState<string>(ALL);
+  const savedSet = useMemo(() => new Set(savedIds), [savedIds]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { [ALL]: items.length };
@@ -93,6 +96,7 @@ export default function FeedClient({ items, tags, llmEnabled }: Props) {
               </div>
               <h2 className="card-title">
                 <Link href={`/article/${it.id}`}>{it.title}</Link>
+                <BookmarkButton id={it.id} initial={savedSet.has(it.id)} />
               </h2>
 
               {it.summaryJa ? (

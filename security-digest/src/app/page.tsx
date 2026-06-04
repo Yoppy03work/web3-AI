@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getDigest } from "@/lib/digest";
+import { getBookmarkedIds } from "@/lib/db";
 import { SOURCES } from "@/lib/sources";
 import FeedClient from "@/components/FeedClient";
 
@@ -20,6 +21,7 @@ function formatJst(iso: string): string {
 
 export default async function Page() {
   const digest = await getDigest();
+  const savedIds = Array.from(await getBookmarkedIds().catch(() => new Set<string>()));
 
   return (
     <main className="shell">
@@ -32,6 +34,7 @@ export default async function Page() {
             <span>更新: {formatJst(digest.generatedAt)}</span>
             <span>ソース: {SOURCES.length}</span>
             <span>記事: {digest.items.length}</span>
+            <Link href="/bookmarks" className="meta-link">★ 保存</Link>
             <Link href="/archive" className="meta-link">アーカイブ →</Link>
           </div>
         </div>
@@ -54,6 +57,7 @@ export default async function Page() {
         items={digest.items}
         tags={digest.tags}
         llmEnabled={digest.llmEnabled}
+        savedIds={savedIds}
       />
 
       <footer className="ftr">

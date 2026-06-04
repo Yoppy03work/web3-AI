@@ -31,6 +31,7 @@ export default async function ArchivePage() {
     <main className="shell">
       <nav className="topnav">
         <Link href="/" className="back">← フィードに戻る</Link>
+        <Link href="/bookmarks" className="back">★ 保存</Link>
       </nav>
 
       <header className="hdr">

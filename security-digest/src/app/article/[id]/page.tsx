@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getArticle, patchArticle } from "@/lib/digest";
+import { getBookmarkedIds } from "@/lib/db";
 import { extractBody } from "@/lib/extract";
 import { llmEnabled, translateLong } from "@/lib/summarize";
+import BookmarkButton from "@/components/BookmarkButton";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +35,8 @@ export default async function ArticlePage({ params }: ArticleParams) {
   const article = await getArticle(id);
   if (!article) notFound();
 
+  const saved = (await getBookmarkedIds().catch(() => new Set<string>())).has(id);
+
   // --- lazy body extraction ---
   // Storage convention:
   //   body === null  → not attempted yet
@@ -60,6 +64,7 @@ export default async function ArticlePage({ params }: ArticleParams) {
     <main className="shell">
       <nav className="topnav">
         <Link href="/" className="back">← フィードに戻る</Link>
+        <Link href="/bookmarks" className="back">★ 保存</Link>
         <Link href="/archive" className="back">アーカイブ</Link>
       </nav>
 
@@ -76,7 +81,10 @@ export default async function ArticlePage({ params }: ArticleParams) {
           <span className="when">{formatJst(article.publishedAt)}</span>
         </div>
 
-        <h1 className="detail-title">{article.title}</h1>
+        <div className="detail-title-row">
+          <h1 className="detail-title">{article.title}</h1>
+          <BookmarkButton id={article.id} initial={saved} size="lg" />
+        </div>
 
         {article.tags.length > 0 ? (
           <div className="tags detail-tags">
