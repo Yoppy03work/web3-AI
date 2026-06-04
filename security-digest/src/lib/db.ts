@@ -174,6 +174,9 @@ async function ensureSchema(): Promise<void> {
     { sql: `CREATE INDEX IF NOT EXISTS idx_articles_kind ON articles(kind)` },
     { sql: `CREATE INDEX IF NOT EXISTS idx_articles_published ON articles(published_at)` },
     {
+      // `date` is the snapshot KEY: "YYYY-MM-DD#morning" / "#evening" so both
+      // daily editions are retained. The plain date + edition also live in the
+      // payload JSON (and the `edition` column below for SQL queries).
       sql: `CREATE TABLE IF NOT EXISTS digests (
         date TEXT PRIMARY KEY,
         generated_at TEXT NOT NULL,
@@ -199,7 +202,10 @@ async function ensureSchema(): Promise<void> {
 
   // Idempotent migrations for columns added after the initial release.
   // (CREATE TABLE IF NOT EXISTS won't add columns to a pre-existing table.)
-  for (const sql of ["ALTER TABLE articles ADD COLUMN cves TEXT"]) {
+  for (const sql of [
+    "ALTER TABLE articles ADD COLUMN cves TEXT",
+    "ALTER TABLE digests ADD COLUMN edition TEXT",
+  ]) {
     try {
       await pipeline([{ sql }]);
     } catch (err) {
@@ -280,6 +286,11 @@ function safeArray(s: string): string[] {
 
 // ---------------- public API ----------------
 
+// Snapshot key: one row per (date, edition) so morning & evening both persist.
+export function snapshotKey(d: Pick<Digest, "date" | "edition">): string {
+  return `${d.date}#${d.edition}`;
+}
+
 export async function saveDigest(d: Digest): Promise<void> {
   if (!dbEnabled()) {
     for (const it of d.items) {
@@ -291,7 +302,7 @@ export async function saveDigest(d: Digest): Promise<void> {
         bodyJa: it.bodyJa ?? prev?.bodyJa ?? null,
       });
     }
-    memDigests.set(d.date, { generatedAt: d.generatedAt, payload: d });
+    memDigests.set(snapshotKey(d), { generatedAt: d.generatedAt, payload: d });
     return;
   }
 
@@ -334,10 +345,11 @@ export async function saveDigest(d: Digest): Promise<void> {
     });
   }
   stmts.push({
-    sql: `INSERT INTO digests (date, generated_at, payload) VALUES (?,?,?)
+    sql: `INSERT INTO digests (date, edition, generated_at, payload) VALUES (?,?,?,?)
           ON CONFLICT(date) DO UPDATE SET
-            generated_at=excluded.generated_at, payload=excluded.payload`,
-    args: [d.date, d.generatedAt, JSON.stringify(d)],
+            edition=excluded.edition, generated_at=excluded.generated_at,
+            payload=excluded.payload`,
+    args: [snapshotKey(d), d.edition, d.generatedAt, JSON.stringify(d)],
   });
 
   // Keep the FTS index in sync (delete-then-insert per article). body_ja is
@@ -429,7 +441,7 @@ export async function getLatestSnapshot(): Promise<Digest | null> {
   }
   await ensureSchema();
   const [rows] = await pipeline([
-    { sql: `SELECT payload FROM digests ORDER BY date DESC LIMIT 1` },
+    { sql: `SELECT payload FROM digests ORDER BY generated_at DESC LIMIT 1` },
   ]);
   if (!rows || !rows.length) return null;
   try {
@@ -439,13 +451,17 @@ export async function getLatestSnapshot(): Promise<Digest | null> {
   }
 }
 
+// Returns snapshot KEYS ("YYYY-MM-DD#edition"), newest first.
 export async function listSnapshotDates(limit: number): Promise<string[]> {
   if (!dbEnabled()) {
-    return Array.from(memDigests.keys()).sort((a, b) => (a < b ? 1 : -1)).slice(0, limit);
+    return Array.from(memDigests.entries())
+      .sort((a, b) => (a[1].generatedAt < b[1].generatedAt ? 1 : -1))
+      .slice(0, limit)
+      .map(([key]) => key);
   }
   await ensureSchema();
   const [rows] = await pipeline([
-    { sql: `SELECT date FROM digests ORDER BY date DESC LIMIT ?`, args: [limit] },
+    { sql: `SELECT date FROM digests ORDER BY generated_at DESC LIMIT ?`, args: [limit] },
   ]);
   return (rows ?? []).map((r) => String(r.date));
 }
