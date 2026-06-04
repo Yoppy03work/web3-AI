@@ -1,4 +1,5 @@
 import { getDigest } from "@/lib/digest";
+import { notifySlack } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,14 @@ export async function GET(request: Request) {
     }
 
     const digest = await getDigest(refresh);
+
+    // On a real refresh (this is what the cron hits), push a Slack summary.
+    // Await it so the serverless function doesn't freeze before the POST
+    // completes. Opt out with &notify=0 while testing manually.
+    if (refresh && url.searchParams.get("notify") !== "0") {
+      await notifySlack(digest);
+    }
+
     return new Response(JSON.stringify(digest), {
       status: 200,
       headers: {
