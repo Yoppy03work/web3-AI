@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import type { DigestItem } from "@/lib/types";
 
 type Props = {
@@ -73,15 +74,13 @@ export default function FeedClient({ items, tags, llmEnabled }: Props) {
       ) : (
         <ul className="cards">
           {visible.map((it) => (
-            <li key={it.link} className="card">
+            <li key={it.id} className="card">
               <div className="card-head">
                 <span className="src">{it.source}</span>
                 <span className="when">{relativeJa(it.publishedAt)}</span>
               </div>
               <h2 className="card-title">
-                <a href={it.link} target="_blank" rel="noopener noreferrer">
-                  {it.title}
-                </a>
+                <Link href={`/article/${it.id}`}>{it.title}</Link>
               </h2>
 
               {it.summaryJa ? (
@@ -105,15 +104,28 @@ export default function FeedClient({ items, tags, llmEnabled }: Props) {
                 </div>
               ) : null}
 
-              {it.tags.length > 0 ? (
-                <div className="tags">
-                  {it.tags.map((t) => (
-                    <span key={t} className="tag">
-                      #{t}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
+              <div className="card-foot">
+                {it.tags.length > 0 ? (
+                  <div className="tags">
+                    {it.tags.map((t) => (
+                      <span key={t} className="tag">
+                        #{t}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span />
+                )}
+                <a
+                  className="orig"
+                  href={it.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`${it.title} の原文を新しいタブで開く`}
+                >
+                  原文 ↗
+                </a>
+              </div>
             </li>
           ))}
         </ul>

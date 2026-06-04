@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getDigest } from "@/lib/digest";
 import { SOURCES } from "@/lib/sources";
 import FeedClient from "@/components/FeedClient";
@@ -31,6 +32,7 @@ export default async function Page() {
             <span>更新: {formatJst(digest.generatedAt)}</span>
             <span>ソース: {SOURCES.length}</span>
             <span>記事: {digest.items.length}</span>
+            <Link href="/archive" className="meta-link">アーカイブ →</Link>
           </div>
         </div>
 
