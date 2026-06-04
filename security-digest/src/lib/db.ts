@@ -298,14 +298,18 @@ export async function saveDigest(d: Digest): Promise<void> {
   });
 
   // Keep the FTS index in sync (delete-then-insert per article). body_ja is
-  // usually null here and gets filled later via patchArticleRow.
+  // null on a fresh feed item and is filled later via patchArticleRow. A feed
+  // routinely re-lists the same article for days, so we must NOT overwrite an
+  // already-translated body_ja with "". The article upserts above ran first in
+  // this same pipeline and preserve articles.body_ja (it's excluded from the
+  // ON CONFLICT SET list), so we source the FTS body_ja from there.
   if (ftsReady) {
     for (const it of d.items) {
       stmts.push({ sql: `DELETE FROM articles_fts WHERE id = ?`, args: [it.id] });
       stmts.push({
         sql: `INSERT INTO articles_fts (id, title, summary_ja, body_ja)
-              VALUES (?,?,?,?)`,
-        args: [it.id, it.title, it.summaryJa ?? "", it.bodyJa ?? ""],
+              VALUES (?, ?, ?, COALESCE((SELECT body_ja FROM articles WHERE id = ?), ''))`,
+        args: [it.id, it.title, it.summaryJa ?? "", it.id],
       });
     }
   }

@@ -56,12 +56,41 @@ function buildPrompt(items: RawItem[]): string {
 }
 
 function extractJsonArray(text: string): unknown {
-  const start = text.indexOf("[");
-  const end = text.lastIndexOf("]");
-  if (start < 0 || end < 0 || end <= start) {
-    throw new Error("no JSON array in LLM response");
+  // Try the whole response first (handles clean output and ```json fences).
+  const stripped = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  try {
+    return JSON.parse(stripped);
+  } catch {
+    // fall through to a balanced scan
   }
-  return JSON.parse(text.slice(start, end + 1));
+  // Find the first *balanced* top-level array starting at the first "[".
+  // String-aware so brackets inside summary strings (e.g. "[PoC]") and any
+  // trailing prose ("…see [1]") don't corrupt the slice.
+  const start = stripped.indexOf("[");
+  if (start < 0) throw new Error("no JSON array in LLM response");
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < stripped.length; i++) {
+    const c = stripped[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === "[") depth++;
+    else if (c === "]") {
+      depth--;
+      if (depth === 0) return JSON.parse(stripped.slice(start, i + 1));
+    }
+  }
+  throw new Error("no balanced JSON array in LLM response");
 }
 
 export async function summarizeBatch(items: RawItem[]): Promise<Summary[]> {

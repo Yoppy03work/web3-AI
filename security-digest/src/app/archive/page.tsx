@@ -87,7 +87,7 @@ export default async function ArchivePage() {
 
       <footer className="ftr">
         <p className="dim">
-          履歴は Upstash Redis に保存されています。未接続のローカル環境では当日分のみ表示。
+          履歴は Turso (libSQL) に保存されています。未接続のローカル環境では当日分のみ表示。
         </p>
       </footer>
     </main>

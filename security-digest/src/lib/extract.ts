@@ -106,7 +106,53 @@ function paragraphsFrom(html: string): string[] {
   return out;
 }
 
+// SSRF guard: article links come from feeds (attacker-influenceable), so before
+// the server fetches one we reject non-http(s) schemes and hosts that resolve to
+// loopback / private / link-local / cloud-metadata ranges by literal IP.
+// (DNS-rebinding to a private IP via a public name is not fully covered — a
+// known limitation for a personal app; the metadata-IP literal attack is.)
+function isPrivateIpLiteral(host: string): boolean {
+  const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const a = Number(v4[1]);
+    const b = Number(v4[2]);
+    if ([a, b, Number(v4[3]), Number(v4[4])].some((n) => n > 255)) return true;
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true; // link-local + 169.254.169.254 metadata
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+    return false;
+  }
+  if (host.includes(":")) {
+    const h = host.replace(/^\[|\]$/g, "").toLowerCase();
+    return (
+      h === "::1" ||
+      h === "::" ||
+      h.startsWith("fc") ||
+      h.startsWith("fd") || // unique-local
+      h.startsWith("fe80") // link-local
+    );
+  }
+  return false;
+}
+
+function isSafeFetchUrl(raw: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+  const host = u.hostname.toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost")) return false;
+  if (isPrivateIpLiteral(host)) return false;
+  return true;
+}
+
 export async function extractBody(url: string): Promise<string | null> {
+  if (!isSafeFetchUrl(url)) return null;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -124,7 +170,14 @@ export async function extractBody(url: string): Promise<string | null> {
     const html = await res.text();
     const cleaned = stripJunk(html);
     const main = findMainContainer(cleaned);
-    const paras = paragraphsFrom(main);
+    let paras = paragraphsFrom(main);
+    // The id-div / article container regexes stop at the first matching close
+    // tag, which truncates nested layouts. If the container yielded too little,
+    // fall back to harvesting <p> across the whole cleaned document.
+    if (paras.length < 3) {
+      const all = paragraphsFrom(cleaned);
+      if (all.length > paras.length) paras = all;
+    }
     if (paras.length === 0) return null;
     const joined = paras.join("\n\n");
     return joined.length > BODY_MAX ? joined.slice(0, BODY_MAX) + "…" : joined;
