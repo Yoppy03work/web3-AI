@@ -65,7 +65,14 @@ export default async function ArticlePage({ params }: ArticleParams) {
 
       <article className="detail">
         <div className="detail-head">
-          <span className="src">{article.source}</span>
+          <span className="src">
+            {article.source}
+            {article.kind === "paper" ? (
+              <span className="kind-badge k-paper">論文</span>
+            ) : article.kind === "research" ? (
+              <span className="kind-badge k-research">研究</span>
+            ) : null}
+          </span>
           <span className="when">{formatJst(article.publishedAt)}</span>
         </div>
 

@@ -1,10 +1,14 @@
+export type SourceKind = "news" | "research" | "paper";
+
 export type Source = {
   name: string;
   url: string;
+  kind: SourceKind;
 };
 
 export type RawItem = {
   source: string;
+  kind: SourceKind;
   title: string;
   link: string;
   excerpt: string;
