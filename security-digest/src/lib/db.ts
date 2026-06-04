@@ -134,6 +134,7 @@ async function pipeline(stmts: Stmt[]): Promise<Row[][]> {
 
 const memArticles = new Map<string, DigestItem>();
 const memDigests = new Map<string, { generatedAt: string; payload: Digest }>();
+const memBookmarks = new Map<string, string>(); // id -> created_at ISO
 
 // ---------------- schema ----------------
 
@@ -169,6 +170,12 @@ async function ensureSchema(): Promise<void> {
         date TEXT PRIMARY KEY,
         generated_at TEXT NOT NULL,
         payload TEXT NOT NULL
+      )`,
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS bookmarks (
+        id TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL
       )`,
     },
   ]);
@@ -347,4 +354,62 @@ export async function listSnapshotDates(limit: number): Promise<string[]> {
     { sql: `SELECT date FROM digests ORDER BY date DESC LIMIT ?`, args: [limit] },
   ]);
   return (rows ?? []).map((r) => String(r.date));
+}
+
+// ---------------- bookmarks ----------------
+
+export async function setBookmark(id: string, on: boolean): Promise<void> {
+  const now = new Date().toISOString();
+  if (!dbEnabled()) {
+    if (on) memBookmarks.set(id, now);
+    else memBookmarks.delete(id);
+    return;
+  }
+  await ensureSchema();
+  if (on) {
+    await pipeline([
+      {
+        sql: `INSERT INTO bookmarks (id, created_at) VALUES (?, ?)
+              ON CONFLICT(id) DO NOTHING`,
+        args: [id, now],
+      },
+    ]);
+  } else {
+    await pipeline([{ sql: `DELETE FROM bookmarks WHERE id = ?`, args: [id] }]);
+  }
+}
+
+export async function getBookmarkedIds(): Promise<Set<string>> {
+  if (!dbEnabled()) return new Set(memBookmarks.keys());
+  await ensureSchema();
+  const [rows] = await pipeline([{ sql: `SELECT id FROM bookmarks` }]);
+  return new Set((rows ?? []).map((r) => String(r.id)));
+}
+
+// Saved articles, most-recently-bookmarked first. Bookmarks whose article row
+// no longer exists are skipped (left join would null them; we inner-join).
+export async function listBookmarkedArticles(limit: number): Promise<DigestItem[]> {
+  if (!dbEnabled()) {
+    const ids = Array.from(memBookmarks.entries())
+      .sort((a, b) => (a[1] < b[1] ? 1 : -1))
+      .map(([id]) => id);
+    const out: DigestItem[] = [];
+    for (const id of ids) {
+      const it = memArticles.get(id);
+      if (it) out.push(it);
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+  await ensureSchema();
+  const [rows] = await pipeline([
+    {
+      sql: `SELECT a.* FROM bookmarks b
+            JOIN articles a ON a.id = b.id
+            ORDER BY b.created_at DESC
+            LIMIT ?`,
+      args: [limit],
+    },
+  ]);
+  return (rows ?? []).map(rowToItem);
 }
