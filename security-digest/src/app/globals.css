@@ -111,6 +111,52 @@ a:hover {
   color: var(--err);
   border-color: rgba(248, 113, 113, 0.45);
 }
+.pill.edition {
+  color: var(--accent-2);
+  border-color: rgba(34, 211, 238, 0.4);
+  background: rgba(34, 211, 238, 0.08);
+}
+
+/* ---------- TL;DR (today's 3 lines) ---------- */
+
+.tldr {
+  margin-top: 14px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-2);
+  border-radius: 0 10px 10px 0;
+  background: rgba(34, 211, 238, 0.05);
+}
+.tldr-label {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-2);
+  border: 1px solid rgba(34, 211, 238, 0.4);
+  border-radius: 4px;
+  padding: 1px 7px;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+.tldr-body {
+  margin: 0;
+}
+.tldr-body p {
+  margin: 0 0 2px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.tldr-sm {
+  margin: 6px 0 10px;
+  padding: 8px 12px;
+}
+.tldr-sm .tldr-body p {
+  font-size: 13px;
+}
 
 .chips {
   display: flex;

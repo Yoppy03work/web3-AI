@@ -41,6 +41,8 @@ export type DigestItem = RawItem & {
   cves: CveRef[];
 };
 
+export type Edition = "morning" | "evening";
+
 export type Digest = {
   generatedAt: string;
   items: DigestItem[];
@@ -49,4 +51,8 @@ export type Digest = {
   failedSources: string[];
   // ISO date "YYYY-MM-DD" (JST) — the archive bucket this digest belongs to.
   date: string;
+  // Which daily run this is (07:00 JST = morning, 19:00 JST = evening).
+  edition: Edition;
+  // 3-line Japanese roll-up of the run. null when LLM is off / unavailable.
+  tldr: string | null;
 };

@@ -51,18 +51,30 @@ export async function notifySlack(digest: Digest): Promise<boolean> {
       ? ` · 取得失敗: ${digest.failedSources.join(", ")}`
       : "";
 
+  const editionLabel = digest.edition === "morning" ? "🌅 朝刊" : "🌙 夕刊";
+  const tldrBlock = digest.tldr
+    ? [
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `*今日の3行*\n${esc(digest.tldr)}` },
+        },
+        { type: "divider" },
+      ]
+    : [];
+
   const payload = {
     // Plain fallback text used for the OS/notification preview.
-    text: `🛡️ Security Morning Digest ${digest.date}（${digest.items.length}件）`,
+    text: `🛡️ Security Morning Digest ${digest.date} ${editionLabel}（${digest.items.length}件）`,
     blocks: [
       {
         type: "header",
         text: {
           type: "plain_text",
-          text: `🛡️ Security Morning Digest — ${digest.date}`,
+          text: `🛡️ Security Morning Digest — ${digest.date} ${editionLabel}`,
           emoji: true,
         },
       },
+      ...tldrBlock,
       {
         type: "section",
         text: {

@@ -138,8 +138,10 @@ SELECT digest_date, count(*) FROM articles GROUP BY digest_date ORDER BY 1 DESC;
 4. Environment Variables：少なくとも `ANTHROPIC_API_KEY` と Turso の 2 つを入れる
 5. Deploy
 
-Cron は `vercel.json` に同梱（UTC 22:00 = JST 07:00 に `/api/digest?refresh=1` を叩く）。
-`REFRESH_TOKEN` を有効にする場合は `vercel.json` の `path` も `?refresh=1&token=...` に書き換える。
+Cron は `vercel.json` に **1日2本**（UTC 22:00 = **JST 07:00 朝刊** / UTC 10:00 = **JST 19:00 夕刊**）。
+各更新で記事を取り直し、**今日の3行 TL;DR**（LLM）と朝刊/夕刊ラベルを付与してトップ＋Slack に出す。
+（Vercel Hobby は cron 2本・各1日1回まで。本構成はその範囲内）
+本番では `CRON_SECRET` を設定すれば、cron は `Authorization: Bearer` で自動認証され、`?refresh=1` の無認証実行を 401 で塞げる。
 
 ### Slack 通知
 

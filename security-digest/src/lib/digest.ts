@@ -13,8 +13,8 @@ import {
   putCveCache,
   saveDigest,
 } from "./db";
-import { llmEnabled, summarizeBatch } from "./summarize";
-import type { CveRef, Digest, DigestItem, RawItem } from "./types";
+import { llmEnabled, summarizeBatch, summarizeTldr } from "./summarize";
+import type { CveRef, Digest, DigestItem, Edition, RawItem } from "./types";
 
 const DEFAULT_MAX_ITEMS = 12;
 const DEFAULT_TTL_MINUTES = 360;
@@ -43,6 +43,19 @@ function jstDate(iso: string): string {
     day: "2-digit",
   });
   return fmt.format(new Date(iso));
+}
+
+// Which edition a given moment belongs to. The crons fire at 07:00 and 19:00
+// JST; we split the day at 15:00 JST so a 07:00 run is "morning" and a 19:00
+// run is "evening" (manual refreshes get the nearest label).
+function jstEdition(iso: string): Edition {
+  const hourStr = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Tokyo",
+    hour: "2-digit",
+    hour12: false,
+  }).format(new Date(iso));
+  const hour = parseInt(hourStr, 10);
+  return hour >= 4 && hour < 15 ? "morning" : "evening";
 }
 
 // In-memory layer in front of SQL. Saves a round-trip for hot pages.
@@ -135,6 +148,17 @@ async function buildDigest(): Promise<Digest> {
   });
 
   const generatedAt = new Date().toISOString();
+
+  // One extra LLM call to roll the run up into a 3-line TL;DR (null if no key).
+  const tldr = await summarizeTldr(
+    items.map((it) => ({
+      title: it.title,
+      source: it.source,
+      summaryJa: it.summaryJa,
+      excerpt: it.excerpt,
+    })),
+  ).catch(() => null);
+
   const digest: Digest = {
     generatedAt,
     items,
@@ -142,6 +166,8 @@ async function buildDigest(): Promise<Digest> {
     llmEnabled: llmEnabled(),
     failedSources,
     date: jstDate(generatedAt),
+    edition: jstEdition(generatedAt),
+    tldr,
   };
 
   // Persist (best-effort; failures are logged but don't break the response).

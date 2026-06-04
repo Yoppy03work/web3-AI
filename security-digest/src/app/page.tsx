@@ -41,6 +41,9 @@ export default async function Page() {
         </div>
 
         <div className="banners">
+          <span className="pill edition">
+            {digest.edition === "morning" ? "🌅 朝刊" : "🌙 夕刊"}
+          </span>
           <span className={`pill ${digest.llmEnabled ? "ok" : "warn"}`}>
             LLM: {digest.llmEnabled ? "有効" : "無効（英語抜粋を表示）"}
           </span>
@@ -52,6 +55,17 @@ export default async function Page() {
             <span className="pill ok">全ソース取得 OK</span>
           )}
         </div>
+
+        {digest.tldr ? (
+          <div className="tldr">
+            <span className="tldr-label">今日の3行</span>
+            <div className="tldr-body">
+              {digest.tldr.split("\n").map((line, i) => (
+                <p key={i}>{line}</p>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </header>
 
       <FeedClient
