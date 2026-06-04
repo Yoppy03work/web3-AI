@@ -25,6 +25,13 @@ export type CveRef = {
   vector: string | null;
 };
 
+// A sibling article covering the same incident (different outlet).
+export type RelatedRef = {
+  id: string;
+  source: string;
+  title: string;
+};
+
 export type DigestItem = RawItem & {
   id: string;
   tags: string[];
@@ -39,6 +46,9 @@ export type DigestItem = RawItem & {
   bodyJa: string | null;
   // CVE IDs mentioned in the article, enriched with CVSS from NVD when known.
   cves: CveRef[];
+  // Other articles in this run covering the same incident (other outlets).
+  // Only populated for cross-outlet clusters. Empty otherwise.
+  related: RelatedRef[];
 };
 
 export type Edition = "morning" | "evening";

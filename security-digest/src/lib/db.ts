@@ -15,7 +15,14 @@
 //   resp: { results: [ {type:"ok", response:{type:"execute",
 //            result:{cols:[{name}], rows:[[{type,value}]]}}}, ... ] }
 
-import type { CveRef, CvssSeverity, DigestItem, Digest, SourceKind } from "./types";
+import type {
+  CveRef,
+  CvssSeverity,
+  DigestItem,
+  Digest,
+  RelatedRef,
+  SourceKind,
+} from "./types";
 
 const URL_ENV = "TURSO_DATABASE_URL";
 const TOKEN_ENV = "TURSO_AUTH_TOKEN";
@@ -204,6 +211,7 @@ async function ensureSchema(): Promise<void> {
   // (CREATE TABLE IF NOT EXISTS won't add columns to a pre-existing table.)
   for (const sql of [
     "ALTER TABLE articles ADD COLUMN cves TEXT",
+    "ALTER TABLE articles ADD COLUMN related TEXT",
     "ALTER TABLE digests ADD COLUMN edition TEXT",
   ]) {
     try {
@@ -255,6 +263,7 @@ function rowToItem(r: Row): DigestItem {
     bodyJa: r.body_ja == null ? null : String(r.body_ja),
     llm: Number(r.llm) === 1,
     cves: r.cves ? safeCves(String(r.cves)) : [],
+    related: r.related ? safeRelated(String(r.related)) : [],
   };
 }
 
@@ -270,6 +279,18 @@ function safeCves(s: string): CveRef[] {
         severity: (x.severity ?? null) as CvssSeverity | null,
         vector: typeof x.vector === "string" ? x.vector : null,
       }));
+  } catch {
+    return [];
+  }
+}
+
+function safeRelated(s: string): RelatedRef[] {
+  try {
+    const v = JSON.parse(s);
+    if (!Array.isArray(v)) return [];
+    return v
+      .filter((x) => x && typeof x.id === "string")
+      .map((x) => ({ id: String(x.id), source: String(x.source ?? ""), title: String(x.title ?? "") }));
   } catch {
     return [];
   }
@@ -316,14 +337,15 @@ export async function saveDigest(d: Digest): Promise<void> {
     stmts.push({
       sql: `INSERT INTO articles
         (id, source, kind, title, link, excerpt, published_at, digest_date,
-         tags, summary_ja, why_ja, body, body_ja, llm, first_seen, cves)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         tags, summary_ja, why_ja, body, body_ja, llm, first_seen, cves, related)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
           source=excluded.source, kind=excluded.kind, title=excluded.title,
           link=excluded.link, excerpt=excluded.excerpt,
           published_at=excluded.published_at, digest_date=excluded.digest_date,
           tags=excluded.tags, summary_ja=excluded.summary_ja,
-          why_ja=excluded.why_ja, llm=excluded.llm, cves=excluded.cves`,
+          why_ja=excluded.why_ja, llm=excluded.llm, cves=excluded.cves,
+          related=excluded.related`,
       args: [
         it.id,
         it.source,
@@ -341,6 +363,7 @@ export async function saveDigest(d: Digest): Promise<void> {
         it.llm ? 1 : 0,
         d.generatedAt,
         JSON.stringify(it.cves ?? []),
+        JSON.stringify(it.related ?? []),
       ],
     });
   }

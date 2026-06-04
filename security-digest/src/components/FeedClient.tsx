@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { DigestItem } from "@/lib/types";
 import BookmarkButton from "./BookmarkButton";
 import CveBadges from "./CveBadges";
+import RelatedCoverage from "./RelatedCoverage";
 
 type Props = {
   items: DigestItem[];
@@ -122,6 +123,7 @@ export default function FeedClient({ items, tags, llmEnabled, savedIds }: Props)
               ) : null}
 
               <CveBadges cves={it.cves} max={3} />
+              <RelatedCoverage related={it.related} />
 
               <div className="card-foot">
                 {it.tags.length > 0 ? (
