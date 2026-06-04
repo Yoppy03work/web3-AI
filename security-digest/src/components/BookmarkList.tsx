@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { DigestItem } from "@/lib/types";
 import BookmarkButton from "./BookmarkButton";
+import CveBadges from "./CveBadges";
 
 function kindBadge(kind: string): { label: string; cls: string } | null {
   if (kind === "paper") return { label: "論文", cls: "k-paper" };
@@ -51,6 +52,7 @@ export default function BookmarkList({ items }: { items: DigestItem[] }) {
                 <span className="why-body">{it.whyJa}</span>
               </div>
             ) : null}
+            <CveBadges cves={it.cves} max={3} />
             <div className="card-foot">
               {it.tags.length > 0 ? (
                 <div className="tags">

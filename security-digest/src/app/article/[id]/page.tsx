@@ -5,6 +5,7 @@ import { getBookmarkedIds } from "@/lib/db";
 import { extractBody } from "@/lib/extract";
 import { llmEnabled, translateLong } from "@/lib/summarize";
 import BookmarkButton from "@/components/BookmarkButton";
+import CveBadges from "@/components/CveBadges";
 
 export const dynamic = "force-dynamic";
 
@@ -109,6 +110,14 @@ export default async function ArticlePage({ params }: ArticleParams) {
             <span className="why-label">なぜ重要</span>
             <span className="why-body">{article.whyJa}</span>
           </div>
+        ) : null}
+
+        {article.cves && article.cves.length > 0 ? (
+          <section className="detail-cves">
+            <h2 className="section-h">関連する脆弱性 (CVE / CVSS)</h2>
+            <CveBadges cves={article.cves} />
+            <p className="hint">スコアは NVD（CVSS 基本値）。クリックで NVD の詳細へ。</p>
+          </section>
         ) : null}
 
         <section className="detail-body">

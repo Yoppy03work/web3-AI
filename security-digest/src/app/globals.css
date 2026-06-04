@@ -326,6 +326,62 @@ a:hover {
   margin-top: 2px;
 }
 
+/* ---------- CVE / CVSS badges ---------- */
+
+.cves {
+  margin: 8px 0 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.cve {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.cve:hover {
+  text-decoration: none;
+  filter: brightness(1.15);
+}
+.cve.sev-crit {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.6);
+}
+.cve.sev-high {
+  color: #fed7aa;
+  background: rgba(249, 115, 22, 0.14);
+  border-color: rgba(249, 115, 22, 0.5);
+}
+.cve.sev-med {
+  color: #fde68a;
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.45);
+}
+.cve.sev-low {
+  color: #bbf7d0;
+  background: rgba(74, 222, 128, 0.1);
+  border-color: rgba(74, 222, 128, 0.4);
+}
+.cve.sev-none,
+.cve.sev-unknown {
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.03);
+}
+.cve-more {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.detail-cves {
+  margin: 16px 0;
+}
+
 .tags {
   margin-top: 8px;
   display: flex;

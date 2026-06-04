@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { DigestItem } from "@/lib/types";
 import BookmarkButton from "./BookmarkButton";
+import CveBadges from "./CveBadges";
 
 type Props = {
   items: DigestItem[];
@@ -119,6 +120,8 @@ export default function FeedClient({ items, tags, llmEnabled, savedIds }: Props)
                   <span className="why-body">{it.whyJa}</span>
                 </div>
               ) : null}
+
+              <CveBadges cves={it.cves} max={3} />
 
               <div className="card-foot">
                 {it.tags.length > 0 ? (

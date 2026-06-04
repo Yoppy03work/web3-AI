@@ -1,17 +1,20 @@
 import { articleId } from "./id";
+import { extractCveIds, fetchCvss } from "./cve";
 import { diversify, fetchAllFeeds } from "./rss";
 import { SOURCES, TAGS, tagsFor } from "./sources";
 import {
   dbEnabled,
   getArticleRow,
+  getCveCache,
   getDigestSnapshot,
   getLatestSnapshot,
   listSnapshotDates,
   patchArticleRow,
+  putCveCache,
   saveDigest,
 } from "./db";
 import { llmEnabled, summarizeBatch } from "./summarize";
-import type { Digest, DigestItem, RawItem } from "./types";
+import type { CveRef, Digest, DigestItem, RawItem } from "./types";
 
 const DEFAULT_MAX_ITEMS = 12;
 const DEFAULT_TTL_MINUTES = 360;
@@ -19,6 +22,10 @@ const MAX_ARCHIVE_DAYS = 90;
 // Cap per source in the displayed/summarized top-N so a high-volume feed
 // (arXiv announces ~80/day) can't crowd out everything else.
 const PER_SOURCE_CAP = 4;
+// Per-run NVD fetch budget. NVD allows ~5 req/30s without a key, so we only
+// enrich a few *new* CVEs per build; the rest are served from cache and fresh
+// ones fill in over subsequent runs. Tunable via NVD_MAX_LOOKUPS.
+const DEFAULT_NVD_BUDGET = 5;
 
 function readInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -60,6 +67,34 @@ function appliedTagOrder(items: DigestItem[]): string[] {
   return Array.from(seen);
 }
 
+// Resolve CVSS for a per-item list of CVE IDs. Cache-first; only a bounded
+// number of cache-misses are fetched from NVD this run (rate-limit friendly).
+// Unfetched IDs are still returned (score/severity null) so the UI can at least
+// show the CVE id+link; they get enriched on a later run.
+async function enrichCves(idsByItem: string[][]): Promise<CveRef[][]> {
+  const allIds = Array.from(new Set(idsByItem.flat()));
+  if (allIds.length === 0) return idsByItem.map(() => []);
+
+  const cache = await getCveCache(allIds).catch(() => new Map<string, CveRef>());
+
+  const budget = readInt("NVD_MAX_LOOKUPS", DEFAULT_NVD_BUDGET);
+  const misses = allIds.filter((id) => !cache.has(id));
+  for (const id of misses.slice(0, budget)) {
+    const ref = await fetchCvss(id);
+    if (ref) {
+      cache.set(id, ref);
+      await putCveCache(ref).catch(() => {});
+    } else {
+      // network/rate-limit failure — stop hitting NVD this run, retry next time
+      break;
+    }
+  }
+
+  return idsByItem.map((ids) =>
+    ids.map((id) => cache.get(id) ?? { id, score: null, severity: null, vector: null }),
+  );
+}
+
 async function buildDigest(): Promise<Digest> {
   const maxItems = readInt("DIGEST_MAX_ITEMS", DEFAULT_MAX_ITEMS);
 
@@ -80,6 +115,12 @@ async function buildDigest(): Promise<Digest> {
 
   const summaries = await summarizeBatch(withIds);
 
+  // Extract CVE IDs per item (title + excerpt), then enrich with CVSS from the
+  // CVE cache + a small NVD budget. See enrichCves below.
+  const cvesByItem = await enrichCves(
+    withIds.map((it) => extractCveIds(`${it.title} ${it.excerpt}`)),
+  );
+
   const items: DigestItem[] = withIds.map((it, i) => {
     const s = summaries[i] ?? { summaryJa: it.excerpt || null, whyJa: null, llm: false };
     return {
@@ -89,6 +130,7 @@ async function buildDigest(): Promise<Digest> {
       llm: s.llm,
       body: null, // populated lazily by detail page
       bodyJa: null,
+      cves: cvesByItem[i],
     };
   });
 
