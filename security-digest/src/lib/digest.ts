@@ -1,4 +1,5 @@
 import { articleId } from "./id";
+import { computeClusters } from "./cluster";
 import { extractCveIds, fetchCvss, topSeverity } from "./cve";
 import { diversify, fetchAllFeeds } from "./rss";
 import { SOURCES, TAGS, tagsFor } from "./sources";
@@ -176,8 +177,13 @@ async function buildDigest(): Promise<Digest> {
       body: null, // populated lazily by detail page
       bodyJa: null,
       cves: cvesByItem[i],
+      related: [],
     };
   });
+
+  // 続報クラスタ: link same-incident articles across outlets.
+  const clusters = computeClusters(items);
+  for (const it of items) it.related = clusters.get(it.id) ?? [];
 
   // Severity-aware ordering: float CRITICAL then HIGH CVE items to the top
   // (by CVSS score), keep everything else in its existing recency order.

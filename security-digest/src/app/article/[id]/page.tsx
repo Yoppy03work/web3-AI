@@ -6,6 +6,7 @@ import { extractBody } from "@/lib/extract";
 import { llmEnabled, translateLong } from "@/lib/summarize";
 import BookmarkButton from "@/components/BookmarkButton";
 import CveBadges from "@/components/CveBadges";
+import RelatedCoverage from "@/components/RelatedCoverage";
 
 export const dynamic = "force-dynamic";
 
@@ -119,6 +120,8 @@ export default async function ArticlePage({ params }: ArticleParams) {
             <p className="hint">スコアは NVD（CVSS 基本値）。クリックで NVD の詳細へ。</p>
           </section>
         ) : null}
+
+        <RelatedCoverage related={article.related} variant="block" />
 
         <section className="detail-body">
           <h2 className="section-h">
