@@ -139,6 +139,13 @@ const memBookmarks = new Map<string, string>(); // id -> created_at ISO
 // ---------------- schema ----------------
 
 let schemaReady = false;
+// FTS5 may not be available on every libSQL build. If creating the virtual
+// table fails, we set this false and fall back to LIKE-based search.
+let ftsReady = false;
+
+export function ftsAvailable(): boolean {
+  return ftsReady;
+}
 
 async function ensureSchema(): Promise<void> {
   if (!dbEnabled() || schemaReady) return;
@@ -179,6 +186,24 @@ async function ensureSchema(): Promise<void> {
       )`,
     },
   ]);
+
+  // Full-text search index (separate pipeline so a missing FTS5 build can't
+  // break the core tables). trigram tokenizer works for Japanese (no spaces).
+  try {
+    await pipeline([
+      {
+        sql: `CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
+          id UNINDEXED, title, summary_ja, body_ja, tokenize='trigram'
+        )`,
+      },
+    ]);
+    ftsReady = true;
+  } catch (err) {
+    ftsReady = false;
+    // eslint-disable-next-line no-console
+    console.warn("[db] FTS5 unavailable; search falls back to LIKE:", err);
+  }
+
   schemaReady = true;
 }
 
@@ -272,6 +297,19 @@ export async function saveDigest(d: Digest): Promise<void> {
     args: [d.date, d.generatedAt, JSON.stringify(d)],
   });
 
+  // Keep the FTS index in sync (delete-then-insert per article). body_ja is
+  // usually null here and gets filled later via patchArticleRow.
+  if (ftsReady) {
+    for (const it of d.items) {
+      stmts.push({ sql: `DELETE FROM articles_fts WHERE id = ?`, args: [it.id] });
+      stmts.push({
+        sql: `INSERT INTO articles_fts (id, title, summary_ja, body_ja)
+              VALUES (?,?,?,?)`,
+        args: [it.id, it.title, it.summaryJa ?? "", it.bodyJa ?? ""],
+      });
+    }
+  }
+
   await pipeline(stmts);
 }
 
@@ -306,9 +344,18 @@ export async function patchArticleRow(
   }
   if (sets.length === 0) return;
   args.push(id);
-  await pipeline([
+  const stmts: Stmt[] = [
     { sql: `UPDATE articles SET ${sets.join(", ")} WHERE id = ?`, args },
-  ]);
+  ];
+  // When the Japanese body lands, mirror it into the FTS index so search can
+  // match on translated full text too.
+  if (ftsReady && "bodyJa" in patch) {
+    stmts.push({
+      sql: `UPDATE articles_fts SET body_ja = ? WHERE id = ?`,
+      args: [patch.bodyJa ?? "", id],
+    });
+  }
+  await pipeline(stmts);
 }
 
 export async function getDigestSnapshot(date: string): Promise<Digest | null> {
@@ -354,6 +401,69 @@ export async function listSnapshotDates(limit: number): Promise<string[]> {
     { sql: `SELECT date FROM digests ORDER BY date DESC LIMIT ?`, args: [limit] },
   ]);
   return (rows ?? []).map((r) => String(r.date));
+}
+
+// ---------------- search ----------------
+
+function likeFallback(items: DigestItem[], q: string, limit: number): DigestItem[] {
+  const needle = q.toLowerCase();
+  const hits = items.filter((it) => {
+    const hay = `${it.title} ${it.summaryJa ?? ""} ${it.bodyJa ?? ""} ${it.excerpt}`.toLowerCase();
+    return hay.includes(needle);
+  });
+  hits.sort((a, b) => {
+    const ta = a.publishedAt ? Date.parse(a.publishedAt) : 0;
+    const tb = b.publishedAt ? Date.parse(b.publishedAt) : 0;
+    return tb - ta;
+  });
+  return hits.slice(0, limit);
+}
+
+export async function searchArticles(
+  query: string,
+  limit: number,
+): Promise<DigestItem[]> {
+  const q = query.trim();
+  if (!q) return [];
+
+  if (!dbEnabled()) {
+    return likeFallback(Array.from(memArticles.values()), q, limit);
+  }
+  await ensureSchema();
+
+  // trigram needs ≥3 chars; below that, MATCH errors — use LIKE instead.
+  if (ftsReady && q.length >= 3) {
+    // Wrap as a quoted string so FTS5 treats the whole input literally
+    // (trigram then matches it as a substring). Double embedded quotes.
+    const matchArg = `"${q.replace(/"/g, '""')}"`;
+    const [rows] = await pipeline([
+      {
+        sql: `SELECT a.* FROM articles_fts f
+              JOIN articles a ON a.id = f.id
+              WHERE articles_fts MATCH ?
+              ORDER BY rank
+              LIMIT ?`,
+        args: [matchArg, limit],
+      },
+    ]);
+    return (rows ?? []).map(rowToItem);
+  }
+
+  // LIKE fallback (FTS unavailable, or query shorter than a trigram).
+  const like = `%${q.replace(/[%_\\]/g, (m) => "\\" + m)}%`;
+  const [rows] = await pipeline([
+    {
+      sql: `SELECT * FROM articles
+            WHERE title LIKE ? ESCAPE '\\'
+               OR summary_ja LIKE ? ESCAPE '\\'
+               OR body_ja LIKE ? ESCAPE '\\'
+               OR excerpt LIKE ? ESCAPE '\\'
+            ORDER BY published_at DESC
+            LIMIT ?`,
+      args: [like, like, like, like, limit],
+    },
+  ]);
+  return (rows ?? []).map(rowToItem);
 }
 
 // ---------------- bookmarks ----------------
