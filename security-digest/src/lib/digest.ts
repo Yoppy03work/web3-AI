@@ -15,7 +15,7 @@ import {
   saveDigest,
   snapshotKey,
 } from "./db";
-import { llmEnabled, summarizeBatch, summarizeTldr } from "./summarize";
+import { llmEnabled, summarizeBatch, summarizeReport, summarizeTldr } from "./summarize";
 import type { CveRef, Digest, DigestItem, Edition, RawItem } from "./types";
 
 const DEFAULT_MAX_ITEMS = 18;
@@ -195,15 +195,28 @@ async function buildDigest(): Promise<Digest> {
 
   const generatedAt = new Date().toISOString();
 
-  // One extra LLM call to roll the run up into a 3-line TL;DR (null if no key).
-  const tldr = await summarizeTldr(
-    items.map((it) => ({
-      title: it.title,
-      source: it.source,
-      summaryJa: it.summaryJa,
-      excerpt: it.excerpt,
-    })),
-  ).catch(() => null);
+  // Two LLM roll-ups in parallel: the 3-line TL;DR and the fuller 今日のレポート
+  // (both null when no key).
+  const [tldr, report] = await Promise.all([
+    summarizeTldr(
+      items.map((it) => ({
+        title: it.title,
+        source: it.source,
+        summaryJa: it.summaryJa,
+        excerpt: it.excerpt,
+      })),
+    ).catch(() => null),
+    summarizeReport(
+      items.map((it) => ({
+        title: it.title,
+        source: it.source,
+        kind: it.kind,
+        summaryJa: it.summaryJa,
+        excerpt: it.excerpt,
+        topSeverity: topSeverity(it.cves ?? []),
+      })),
+    ).catch(() => null),
+  ]);
 
   const digest: Digest = {
     generatedAt,
@@ -214,6 +227,7 @@ async function buildDigest(): Promise<Digest> {
     date: jstDate(generatedAt),
     edition: jstEdition(generatedAt),
     tldr,
+    report,
   };
 
   // Persist (best-effort; failures are logged but don't break the response).

@@ -67,6 +67,32 @@ export default async function Page() {
             </div>
           </div>
         ) : null}
+
+        {digest.report ? (
+          <details className="report" open>
+            <summary className="report-summary">📋 今日のレポート</summary>
+            <div className="report-body">
+              {digest.report.split("\n").map((line, i) => {
+                const t = line.trim();
+                if (!t) return null;
+                const m = /^【(.+?)】\s*(.*)$/.exec(t);
+                if (m) {
+                  return (
+                    <p key={i} className="report-line">
+                      <span className="report-h">{m[1]}</span>
+                      {m[2] ? <span> {m[2]}</span> : null}
+                    </p>
+                  );
+                }
+                return (
+                  <p key={i} className="report-line">
+                    {t}
+                  </p>
+                );
+              })}
+            </div>
+          </details>
+        ) : null}
       </header>
 
       <FeedClient
