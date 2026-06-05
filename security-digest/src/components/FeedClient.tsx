@@ -6,6 +6,7 @@ import type { DigestItem } from "@/lib/types";
 import BookmarkButton from "./BookmarkButton";
 import CveBadges from "./CveBadges";
 import RelatedCoverage from "./RelatedCoverage";
+import { kindBadge } from "@/lib/kindBadge";
 
 type Props = {
   items: DigestItem[];
@@ -15,12 +16,6 @@ type Props = {
 };
 
 const ALL = "__all__";
-
-function kindBadge(kind: string): { label: string; cls: string } | null {
-  if (kind === "paper") return { label: "論文", cls: "k-paper" };
-  if (kind === "research") return { label: "研究", cls: "k-research" };
-  return null;
-}
 
 function relativeJa(iso: string | null): string {
   if (!iso) return "日時不明";

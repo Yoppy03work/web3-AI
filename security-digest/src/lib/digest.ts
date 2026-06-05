@@ -18,7 +18,7 @@ import {
 import { llmEnabled, summarizeBatch, summarizeTldr } from "./summarize";
 import type { CveRef, Digest, DigestItem, Edition, RawItem } from "./types";
 
-const DEFAULT_MAX_ITEMS = 12;
+const DEFAULT_MAX_ITEMS = 18;
 const DEFAULT_TTL_MINUTES = 360;
 const MAX_ARCHIVE_DAYS = 90;
 // Cap per source in the displayed/summarized top-N so a high-volume feed

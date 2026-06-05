@@ -267,6 +267,11 @@ a:hover {
   background: rgba(251, 191, 36, 0.1);
   border-color: rgba(251, 191, 36, 0.38);
 }
+.kind-badge.k-ai {
+  color: #7dd3fc;
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.45);
+}
 
 .card-title {
   font-size: 16px;

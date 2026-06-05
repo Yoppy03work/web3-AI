@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getDigestByKey, listArchiveKeys, getDigest } from "@/lib/digest";
+import { kindBadge } from "@/lib/kindBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -76,11 +77,10 @@ export default async function ArchivePage() {
                       <Link href={`/article/${it.id}`}>
                         <span className="archive-src">
                           {it.source}
-                          {it.kind === "paper" ? (
-                            <span className="kind-badge k-paper">論文</span>
-                          ) : it.kind === "research" ? (
-                            <span className="kind-badge k-research">研究</span>
-                          ) : null}
+                          {(() => {
+                            const b = kindBadge(it.kind);
+                            return b ? <span className={`kind-badge ${b.cls}`}>{b.label}</span> : null;
+                          })()}
                         </span>
                         <span className="archive-title">{it.title}</span>
                       </Link>

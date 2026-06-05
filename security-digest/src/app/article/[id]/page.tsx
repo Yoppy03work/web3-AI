@@ -7,6 +7,7 @@ import { llmEnabled, translateLong } from "@/lib/summarize";
 import BookmarkButton from "@/components/BookmarkButton";
 import CveBadges from "@/components/CveBadges";
 import RelatedCoverage from "@/components/RelatedCoverage";
+import { kindBadge } from "@/lib/kindBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -74,11 +75,10 @@ export default async function ArticlePage({ params }: ArticleParams) {
         <div className="detail-head">
           <span className="src">
             {article.source}
-            {article.kind === "paper" ? (
-              <span className="kind-badge k-paper">論文</span>
-            ) : article.kind === "research" ? (
-              <span className="kind-badge k-research">研究</span>
-            ) : null}
+            {(() => {
+              const b = kindBadge(article.kind);
+              return b ? <span className={`kind-badge ${b.cls}`}>{b.label}</span> : null;
+            })()}
           </span>
           <span className="when">{formatJst(article.publishedAt)}</span>
         </div>

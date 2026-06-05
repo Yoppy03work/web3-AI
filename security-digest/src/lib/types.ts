@@ -1,4 +1,4 @@
-export type SourceKind = "news" | "research" | "paper";
+export type SourceKind = "news" | "research" | "paper" | "ai";
 
 export type Source = {
   name: string;
