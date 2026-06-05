@@ -34,6 +34,7 @@ export default async function Page() {
             <span>更新: {formatJst(digest.generatedAt)}</span>
             <span>ソース: {SOURCES.length}</span>
             <span>記事: {digest.items.length}</span>
+            <Link href="/cve" className="meta-link">🛡 CVE特集</Link>
             <Link href="/search" className="meta-link">🔎 検索</Link>
             <Link href="/bookmarks" className="meta-link">★ 保存</Link>
             <Link href="/archive" className="meta-link">アーカイブ →</Link>

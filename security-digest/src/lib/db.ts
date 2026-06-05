@@ -580,6 +580,53 @@ export async function getCveCache(ids: string[]): Promise<Map<string, CveRef>> {
   return out;
 }
 
+// Which of our stored articles mention any of the given CVE IDs? Returns a map
+// cveId → article refs (for the KEV page "📰 関連記事" cross-reference). One
+// query using LIKE over the cves JSON column.
+export async function articlesMentioningCves(
+  ids: string[],
+): Promise<Map<string, RelatedRef[]>> {
+  const out = new Map<string, RelatedRef[]>();
+  if (ids.length === 0) return out;
+  const wanted = new Set(ids);
+
+  let rows: Row[] = [];
+  if (!dbEnabled()) {
+    rows = Array.from(memArticles.values()).map((it) => ({
+      id: it.id,
+      source: it.source,
+      title: it.title,
+      cves: JSON.stringify(it.cves ?? []),
+    }));
+  } else {
+    await ensureSchema();
+    const clauses = ids.map(() => "cves LIKE ?").join(" OR ");
+    const args = ids.map((id) => `%${id}%`);
+    const [r] = await pipeline([
+      {
+        sql: `SELECT id, source, title, cves FROM articles WHERE ${clauses} LIMIT 400`,
+        args,
+      },
+    ]);
+    rows = r ?? [];
+  }
+
+  for (const r of rows) {
+    const cves = r.cves ? safeCves(String(r.cves)) : [];
+    for (const c of cves) {
+      if (!wanted.has(c.id)) continue;
+      const ref: RelatedRef = { id: String(r.id), source: String(r.source), title: String(r.title) };
+      const list = out.get(c.id);
+      if (list) {
+        if (!list.some((x) => x.id === ref.id)) list.push(ref);
+      } else {
+        out.set(c.id, [ref]);
+      }
+    }
+  }
+  return out;
+}
+
 export async function putCveCache(ref: CveRef): Promise<void> {
   const now = new Date().toISOString();
   if (!dbEnabled()) {

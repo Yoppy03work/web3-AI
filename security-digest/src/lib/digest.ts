@@ -113,15 +113,15 @@ function sortBySeverity(items: DigestItem[]): void {
   });
 }
 
-// Resolve CVSS for a per-item list of CVE IDs. Cache-first; only a bounded
-// number of cache-misses are fetched from NVD this run (rate-limit friendly).
-// Unfetched IDs are still returned (score/severity null) so the UI can at least
-// show the CVE id+link; they get enriched on a later run.
-async function enrichCves(idsByItem: string[][]): Promise<CveRef[][]> {
-  const allIds = Array.from(new Set(idsByItem.flat()));
-  if (allIds.length === 0) return idsByItem.map(() => []);
-
-  const cache = await getCveCache(allIds).catch(() => new Map<string, CveRef>());
+// Resolve CVSS for a set of CVE IDs. Cache-first; only a bounded number of
+// cache-misses are fetched from NVD per call (rate-limit friendly). Returns a
+// map id→ref (unfetched ids absent; callers default to null score).
+export async function enrichCveIds(ids: string[]): Promise<Map<string, CveRef>> {
+  const allIds = Array.from(new Set(ids));
+  const cache =
+    allIds.length === 0
+      ? new Map<string, CveRef>()
+      : await getCveCache(allIds).catch(() => new Map<string, CveRef>());
 
   const budget = readInt("NVD_MAX_LOOKUPS", DEFAULT_NVD_BUDGET);
   const misses = allIds.filter((id) => !cache.has(id));
@@ -131,11 +131,14 @@ async function enrichCves(idsByItem: string[][]): Promise<CveRef[][]> {
       cache.set(id, ref);
       await putCveCache(ref).catch(() => {});
     } else {
-      // network/rate-limit failure — stop hitting NVD this run, retry next time
-      break;
+      break; // network/rate-limit failure — retry next time
     }
   }
+  return cache;
+}
 
+async function enrichCves(idsByItem: string[][]): Promise<CveRef[][]> {
+  const cache = await enrichCveIds(idsByItem.flat());
   return idsByItem.map((ids) =>
     ids.map((id) => cache.get(id) ?? { id, score: null, severity: null, vector: null }),
   );
