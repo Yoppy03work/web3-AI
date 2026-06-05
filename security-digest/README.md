@@ -35,6 +35,7 @@
 | news | The Hacker News / BleepingComputer / Krebs on Security / Dark Reading / Schneier on Security |
 | research | Google Project Zero / PortSwigger Research |
 | paper | arXiv cs.CR / IACR ePrint |
+| ai | Simon Willison / The Decoder（AIの最新動向。ついで枠） |
 
 > Black Hat は公開 RSS を出していない（ボットを 403 で弾く）ため、同等以上の研究が
 > 読める Project Zero / PortSwigger を採用。`sources.ts` 末尾に、検証済みの追加候補
@@ -70,7 +71,7 @@ npm run build && npm start
 | `LLM_MODEL` | Claude モデル ID（日付付き推奨） | `claude-haiku-4-5-20251001` |
 | `NVD_API_KEY` | CVE/CVSS 取得用の NVD APIキー（任意。無くても動く） | （空） |
 | `NVD_MAX_LOOKUPS` | 1回の更新で NVD に問い合わせる新規CVE数の上限 | `5` |
-| `DIGEST_MAX_ITEMS` | 1 回の更新で要約する記事数 | `12` |
+| `DIGEST_MAX_ITEMS` | 1 回の更新で要約する記事数 | `18` |
 | `DIGEST_TTL_MINUTES` | インメモリキャッシュの TTL（分） | `360` |
 | `REFRESH_TOKEN` | 手動 `/api/digest?refresh=1` に必要なトークン | （空） |
 | `CRON_SECRET` | 設定すると Vercel Cron が `Authorization: Bearer` で自動認証。本番推奨。どちらか設定時、未認証の refresh は 401 | （空） |

@@ -3,16 +3,11 @@ import { searchArticles } from "@/lib/db";
 import { getDigest } from "@/lib/digest";
 import type { DigestItem } from "@/lib/types";
 import CveBadges from "@/components/CveBadges";
+import { kindBadge } from "@/lib/kindBadge";
 
 export const dynamic = "force-dynamic";
 
 type SearchParams = { searchParams: Promise<{ q?: string }> };
-
-function kindBadge(kind: string): { label: string; cls: string } | null {
-  if (kind === "paper") return { label: "論文", cls: "k-paper" };
-  if (kind === "research") return { label: "研究", cls: "k-research" };
-  return null;
-}
 
 function relJa(iso: string | null): string {
   if (!iso) return "";

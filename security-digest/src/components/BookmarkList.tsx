@@ -5,12 +5,7 @@ import Link from "next/link";
 import type { DigestItem } from "@/lib/types";
 import BookmarkButton from "./BookmarkButton";
 import CveBadges from "./CveBadges";
-
-function kindBadge(kind: string): { label: string; cls: string } | null {
-  if (kind === "paper") return { label: "論文", cls: "k-paper" };
-  if (kind === "research") return { label: "研究", cls: "k-research" };
-  return null;
-}
+import { kindBadge } from "@/lib/kindBadge";
 
 export default function BookmarkList({ items }: { items: DigestItem[] }) {
   const [list, setList] = useState(items);

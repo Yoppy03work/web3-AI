@@ -52,6 +52,7 @@ function esc(s: string): string {
 const KIND_LABEL: Record<string, string> = {
   paper: "論文",
   research: "研究",
+  ai: "AI",
 };
 
 export async function notifySlack(digest: Digest): Promise<boolean> {

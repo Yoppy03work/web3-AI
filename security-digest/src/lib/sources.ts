@@ -15,16 +15,24 @@ export const SOURCES: Source[] = [
   // ---- research (Black Hat lacks an RSS feed; these are the closest in caliber) ----
   { name: "Google Project Zero", url: "https://googleprojectzero.blogspot.com/feeds/posts/default", kind: "research" },
   { name: "PortSwigger Research", url: "https://portswigger.net/research/rss", kind: "research" },
+  { name: "Cisco Talos", url: "https://blog.talosintelligence.com/rss/", kind: "research" },
+  { name: "Unit 42", url: "https://unit42.paloaltonetworks.com/feed/", kind: "research" },
 
   // ---- papers ----
   { name: "arXiv cs.CR", url: "https://rss.arxiv.org/rss/cs.CR", kind: "paper" },
   { name: "IACR ePrint", url: "https://eprint.iacr.org/rss/rss.xml", kind: "paper" },
 
+  // ---- AI (latest AI/LLM developments; kept to 2 focused sources so a
+  //         security digest isn't swamped by general AI/tech-culture news) ----
+  { name: "Simon Willison", url: "https://simonwillison.net/atom/everything/", kind: "ai" },
+  { name: "The Decoder", url: "https://the-decoder.com/feed/", kind: "ai" },
+
   // ---- optional extras (verified live; uncomment to enable) ----
-  // { name: "Cisco Talos", url: "https://blog.talosintelligence.com/rss/", kind: "research" },
-  // { name: "Unit 42", url: "https://unit42.paloaltonetworks.com/feed/", kind: "research" },
+  // { name: "Ars Technica AI", url: "https://arstechnica.com/ai/feed/", kind: "ai" },
+  // { name: "Cisco Talos", url: "https://blog.talosintelligence.com/rss/", kind: "research" },  // already enabled above
   // { name: "SANS ISC", url: "https://isc.sans.edu/rssfeed_full.xml", kind: "news" },
   // { name: "Google Security Blog", url: "https://security.googleblog.com/feeds/posts/default", kind: "news" },
+  // { name: "Google AI Blog", url: "https://blog.google/technology/ai/rss/", kind: "ai" },
 ];
 
 // Interest tags. Order here is preserved when listing tags in the UI.
