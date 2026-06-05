@@ -65,4 +65,6 @@ export type Digest = {
   edition: Edition;
   // 3-line Japanese roll-up of the run. null when LLM is off / unavailable.
   tldr: string | null;
+  // Fuller "今日のレポート" (labeled-section narrative). null when LLM is off.
+  report: string | null;
 };

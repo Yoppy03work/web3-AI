@@ -158,6 +158,52 @@ a:hover {
   font-size: 13px;
 }
 
+/* ---------- 今日のレポート ---------- */
+
+.report {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 10px 14px;
+}
+.report-summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  list-style: none;
+}
+.report-summary::-webkit-details-marker {
+  display: none;
+}
+.report-summary::before {
+  content: "▸ ";
+  color: var(--text-dim);
+}
+.report[open] .report-summary::before {
+  content: "▾ ";
+}
+.report-body {
+  margin-top: 10px;
+}
+.report-line {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+}
+.report-h {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-2);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  border-radius: 4px;
+  padding: 0 7px;
+  margin-right: 6px;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;

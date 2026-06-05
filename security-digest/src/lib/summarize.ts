@@ -306,3 +306,85 @@ export async function summarizeTldr(
     clearTimeout(timer);
   }
 }
+
+export type ReportItem = {
+  title: string;
+  source: string;
+  kind: string;
+  summaryJa: string | null;
+  excerpt: string;
+  topSeverity: string | null;
+};
+
+// A fuller "今日のレポート" than the 3-line TL;DR: a short structured digest of
+// the day's themes. Returns a labeled-section plain-text block (the home page
+// parses 【見出し】lines into headings). One LLM call; null on missing key.
+export async function summarizeReport(items: ReportItem[]): Promise<string | null> {
+  if (!llmEnabled() || items.length === 0) return null;
+
+  const model = process.env.LLM_MODEL?.trim() || DEFAULT_MODEL;
+  const apiKey = process.env.ANTHROPIC_API_KEY!;
+
+  const list = items
+    .slice(0, 18)
+    .map(
+      (it, i) =>
+        `#${i} [${it.source}/${it.kind}]${it.topSeverity ? `(CVSS:${it.topSeverity})` : ""} ${it.title} — ${(it.summaryJa || it.excerpt || "").slice(0, 200)}`,
+    )
+    .join("\n");
+
+  const prompt = [
+    "あなたはセキュリティ編集長です。以下は本日のダイジェスト記事一覧です。",
+    "全体を俯瞰し、読者（学生エンジニア）向けの『今日のレポート』を日本語で書いてください。",
+    "次の見出しを使い、各見出しの後に2〜3文（または短い箇条書き）で内容を書く:",
+    "【概況】今日の全体傾向を2文程度で。",
+    "【注目の脅威・インシデント】最も影響が大きい事案。固有名詞は残す。",
+    "【脆弱性 / CVE】悪用・パッチが要る重要な脆弱性（CVE番号があれば明記）。無ければ「目立った新規CVEなし」。",
+    "【AI 動向】AI/LLM 関連の注目トピック。無ければ省略可。",
+    "【その他の話題】今コミュニティで話題の事柄を1〜2点。",
+    "",
+    "制約: 各見出しは行頭に【】付きで。誇張せず事実ベース。抜粋にない事実は創作しない。",
+    "前置き・後置き・コードフェンスは禁止。全体で600字程度に収める。",
+    "",
+    "---記事一覧---",
+    list,
+  ].join("\n");
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 2048,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      // eslint-disable-next-line no-console
+      console.warn(`[report] Anthropic HTTP ${res.status}; body: ${body.slice(0, 200)}`);
+      return null;
+    }
+    const json = (await res.json()) as { content?: Array<{ type?: string; text?: string }> };
+    const out = (json.content ?? [])
+      .map((b) => (b.type === "text" ? (b.text ?? "") : ""))
+      .join("\n")
+      .trim();
+    return out || null;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[report] error:", err);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
