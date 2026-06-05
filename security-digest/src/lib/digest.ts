@@ -239,26 +239,20 @@ async function buildDigest(): Promise<Digest> {
   return digest;
 }
 
-export async function getDigest(force = false): Promise<Digest> {
-  const ttlMs = readInt("DIGEST_TTL_MINUTES", DEFAULT_TTL_MINUTES) * 60_000;
-  const now = Date.now();
+// When Turso is connected it is the source of truth, and the in-memory layer is
+// only a short burst cache. This matters because each Next route (page vs API
+// route) and each serverless instance has its OWN module memory: after a refresh
+// updates Turso, other modules must re-read it quickly or they'd serve a stale
+// digest (e.g. page shows 12 while the API already has 18). 90s keeps them in
+// sync without hammering Turso. Without Turso, the in-memory cache uses the long
+// TTL so we don't rebuild (feeds + LLM) every 90s in dev.
+const MEM_CACHE_MS = 90_000;
 
-  if (!force && cache.data && cache.expiresAt > now) {
-    return cache.data;
-  }
-
-  // Cold instance with a recent snapshot in SQL: serve it instantly.
-  if (!force && !cache.data && dbEnabled()) {
-    const snap = await getLatestSnapshot().catch(() => null);
-    if (snap) {
-      cache.data = snap;
-      cache.expiresAt = now + ttlMs;
-      return snap;
-    }
-  }
-
+function rebuild(): Promise<Digest> {
   if (cache.inflight) return cache.inflight;
-
+  const ttlMs = dbEnabled()
+    ? MEM_CACHE_MS
+    : readInt("DIGEST_TTL_MINUTES", DEFAULT_TTL_MINUTES) * 60_000;
   cache.inflight = (async () => {
     try {
       const built = await buildDigest();
@@ -269,8 +263,32 @@ export async function getDigest(force = false): Promise<Digest> {
       cache.inflight = null;
     }
   })();
-
   return cache.inflight;
+}
+
+export async function getDigest(force = false): Promise<Digest> {
+  if (force) return rebuild();
+
+  const now = Date.now();
+  if (cache.data && cache.expiresAt > now) return cache.data;
+
+  if (dbEnabled()) {
+    // Re-read the latest snapshot so every route/instance converges fast.
+    const snap = await getLatestSnapshot().catch(() => null);
+    if (snap) {
+      cache.data = snap;
+      cache.expiresAt = now + MEM_CACHE_MS;
+      return snap;
+    }
+    // Turso reachable but empty (first ever run) → build. On a transient Turso
+    // miss with a stale copy in hand, serve the stale copy instead of rebuilding.
+    if (cache.data) {
+      cache.expiresAt = now + MEM_CACHE_MS;
+      return cache.data;
+    }
+  }
+
+  return rebuild();
 }
 
 // ---------------- archive / detail loaders ----------------
