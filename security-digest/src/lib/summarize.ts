@@ -96,10 +96,27 @@ function extractJsonArray(text: string): unknown {
   throw new Error("no balanced JSON array in LLM response");
 }
 
+// Max articles per LLM call. Long (~300 char) Japanese summaries × many items
+// can exceed max_tokens and truncate the JSON array → the whole batch would
+// fall back to English. Chunking keeps each call's output well under the limit
+// and isolates failures to one chunk.
+const SUMMARY_CHUNK = 9;
+
 export async function summarizeBatch(items: RawItem[]): Promise<Summary[]> {
   if (items.length === 0) return [];
   if (!llmEnabled()) return fallbackSummaries(items);
 
+  if (items.length <= SUMMARY_CHUNK) return summarizeChunk(items);
+
+  const chunks: RawItem[][] = [];
+  for (let i = 0; i < items.length; i += SUMMARY_CHUNK) {
+    chunks.push(items.slice(i, i + SUMMARY_CHUNK));
+  }
+  const results = await Promise.all(chunks.map((c) => summarizeChunk(c)));
+  return results.flat();
+}
+
+async function summarizeChunk(items: RawItem[]): Promise<Summary[]> {
   const model = process.env.LLM_MODEL?.trim() || DEFAULT_MODEL;
   const apiKey = process.env.ANTHROPIC_API_KEY!;
 
