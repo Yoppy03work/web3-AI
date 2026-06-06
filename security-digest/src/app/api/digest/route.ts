@@ -2,6 +2,9 @@ import { getDigest } from "@/lib/digest";
 import { notifySlack } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
+// A refresh fans out feeds + several LLM calls (summary chunks w/ retry, TL;DR,
+// report). Give it headroom beyond the default function timeout.
+export const maxDuration = 60;
 
 // Authorize a forced refresh. A forced refresh is expensive (feed fan-out +
 // paid Anthropic call + Slack post), so we don't want it open to the world.

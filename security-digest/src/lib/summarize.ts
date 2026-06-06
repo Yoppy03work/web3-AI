@@ -116,7 +116,33 @@ export async function summarizeBatch(items: RawItem[]): Promise<Summary[]> {
   return results.flat();
 }
 
+const MAX_ATTEMPTS = 2; // 1 retry
+const RETRY_BASE_MS = 2000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+type ChunkOutcome =
+  | { kind: "ok"; summaries: Summary[] }
+  | { kind: "retry" } // transient: 429 / 5xx / network / parse failure
+  | { kind: "fatal" }; // won't be fixed by retry: 400 / 401 / 403 / 404
+
+// One chunk, with retry on transient failures. Each call's output is bounded
+// (≤ SUMMARY_CHUNK items) and max_tokens is generous so the JSON array isn't
+// truncated. Parallel chunks can briefly trip a 429 — a short backoff + retry
+// recovers without falling the whole chunk back to English.
 async function summarizeChunk(items: RawItem[]): Promise<Summary[]> {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const r = await tryChunkOnce(items);
+    if (r.kind === "ok") return r.summaries;
+    if (r.kind === "fatal") break;
+    if (attempt < MAX_ATTEMPTS) await sleep(RETRY_BASE_MS * attempt);
+  }
+  return fallbackSummaries(items);
+}
+
+async function tryChunkOnce(items: RawItem[]): Promise<ChunkOutcome> {
   const model = process.env.LLM_MODEL?.trim() || DEFAULT_MODEL;
   const apiKey = process.env.ANTHROPIC_API_KEY!;
 
@@ -134,21 +160,21 @@ async function summarizeChunk(items: RawItem[]): Promise<Summary[]> {
       },
       body: JSON.stringify({
         model,
-        max_tokens: 8192,
+        max_tokens: 16000,
         messages: [{ role: "user", content: buildPrompt(items) }],
       }),
       cache: "no-store",
     });
 
     if (!res.ok) {
-      // Read the body so the Vercel log tells us exactly why (404 wrong
-      // model, 401 bad key, 429 rate limit, 529 overloaded, ...).
       const body = await res.text().catch(() => "<unreadable body>");
       // eslint-disable-next-line no-console
       console.warn(
-        `[summarize] Anthropic HTTP ${res.status} (model=${model}); body: ${body.slice(0, 500)}`,
+        `[summarize] Anthropic HTTP ${res.status} (model=${model}); body: ${body.slice(0, 300)}`,
       );
-      return fallbackSummaries(items);
+      // 429 (rate limit) and 5xx (incl. 529 overloaded) are transient → retry.
+      if (res.status === 429 || res.status >= 500) return { kind: "retry" };
+      return { kind: "fatal" };
     }
 
     const json = (await res.json()) as {
@@ -162,7 +188,6 @@ async function summarizeChunk(items: RawItem[]): Promise<Summary[]> {
     const parsed = extractJsonArray(text);
     if (!Array.isArray(parsed)) throw new Error("LLM response was not a JSON array");
 
-    // Map by index so missing/reordered entries don't shift everything.
     const byIndex = new Map<number, LlmEntry>();
     for (const raw of parsed) {
       if (raw && typeof raw === "object" && typeof (raw as LlmEntry).index === "number") {
@@ -170,19 +195,19 @@ async function summarizeChunk(items: RawItem[]): Promise<Summary[]> {
       }
     }
 
-    return items.map((it, i): Summary => {
+    const summaries = items.map((it, i): Summary => {
       const e = byIndex.get(i);
       const s = e?.summaryJa?.trim();
       const w = e?.whyJa?.trim();
-      if (!s) {
-        return { summaryJa: it.excerpt || null, whyJa: null, llm: false };
-      }
+      if (!s) return { summaryJa: it.excerpt || null, whyJa: null, llm: false };
       return { summaryJa: s, whyJa: w || null, llm: true };
     });
+    return { kind: "ok", summaries };
   } catch (err) {
+    // Network abort / JSON parse failure → transient, worth one retry.
     // eslint-disable-next-line no-console
-    console.warn("[summarize] error; falling back:", err);
-    return fallbackSummaries(items);
+    console.warn("[summarize] chunk error (will retry if attempts remain):", err);
+    return { kind: "retry" };
   } finally {
     clearTimeout(timer);
   }
