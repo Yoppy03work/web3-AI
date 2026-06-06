@@ -5,6 +5,7 @@ import { SOURCES } from "@/lib/sources";
 import FeedClient from "@/components/FeedClient";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 function formatJst(iso: string): string {
   const d = new Date(iso);
