@@ -143,6 +143,10 @@ export async function notifySlack(digest: Digest): Promise<boolean> {
     ],
   };
 
+  return postSlack(url, payload);
+}
+
+async function postSlack(url: string, payload: unknown): Promise<boolean> {
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -162,4 +166,103 @@ export async function notifySlack(digest: Digest): Promise<boolean> {
     console.warn("[notify] error:", err);
     return false;
   }
+}
+
+// ---------------- KEV alert (悪用が確認された脆弱性の新規追加) ----------------
+
+export type KevAlertEntry = {
+  cveID: string;
+  vendorProject: string;
+  product: string;
+  vulnerabilityName: string;
+  knownRansomware: boolean;
+};
+
+export async function notifyKevAlerts(
+  entries: KevAlertEntry[],
+  cvss: Map<string, { score: number | null }>,
+): Promise<boolean> {
+  const url = process.env.SLACK_WEBHOOK_URL?.trim();
+  if (!url || entries.length === 0) return false;
+
+  const base = siteUrl();
+  // Ransomware-flagged entries first — they're the ones to drop everything for.
+  const sorted = [...entries].sort(
+    (a, b) => Number(b.knownRansomware) - Number(a.knownRansomware),
+  );
+  const shown = sorted.slice(0, 6);
+  const extra = sorted.length - shown.length;
+
+  const lines = shown.map((e) => {
+    const mark = e.knownRansomware ? "🦠" : "⚠️";
+    const score = cvss.get(e.cveID)?.score;
+    const scoreTxt = score != null ? ` (CVSS ${score.toFixed(1)})` : "";
+    return `${mark} <https://nvd.nist.gov/vuln/detail/${e.cveID}|${e.cveID}>${scoreTxt} ${esc(
+      e.vendorProject,
+    )} / ${esc(e.product)} — ${esc(e.vulnerabilityName)}`;
+  });
+
+  const payload = {
+    text: `🚨 KEV 新規追加 ${entries.length}件 — 悪用が確認された脆弱性`,
+    blocks: [
+      {
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: `🚨 KEV 新規追加 — 悪用が確認された脆弱性（${entries.length}件）`,
+          emoji: true,
+        },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: lines.join("\n") + (extra > 0 ? `\n…ほか ${extra} 件` : ""),
+        },
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `出典: CISA KEV · 🦠=ランサム悪用 · <${base}/cve|CVE特集を開く>`,
+          },
+        ],
+      },
+    ],
+  };
+  return postSlack(url, payload);
+}
+
+// ---------------- weekly report (週報) ----------------
+
+export async function notifyWeekly(
+  report: string,
+  weekRange: string,
+): Promise<boolean> {
+  const url = process.env.SLACK_WEBHOOK_URL?.trim();
+  if (!url || !report.trim()) return false;
+
+  const base = siteUrl();
+  const payload = {
+    text: `📅 週報 ${weekRange}`,
+    blocks: [
+      {
+        type: "header",
+        text: { type: "plain_text", text: `📅 今週のセキュリティ週報 — ${weekRange}`, emoji: true },
+      },
+      {
+        type: "section",
+        // Slack section text caps at 3000 chars; our report is ~800 JP chars.
+        text: { type: "mrkdwn", text: esc(report).slice(0, 2900) },
+      },
+      {
+        type: "context",
+        elements: [
+          { type: "mrkdwn", text: `<${base}/weekly|過去の週報> · <${base}/|今日のダイジェスト>` },
+        ],
+      },
+    ],
+  };
+  return postSlack(url, payload);
 }

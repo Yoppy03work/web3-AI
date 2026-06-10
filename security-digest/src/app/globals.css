@@ -204,6 +204,12 @@ a:hover {
   margin-right: 6px;
 }
 
+.weekly-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;
