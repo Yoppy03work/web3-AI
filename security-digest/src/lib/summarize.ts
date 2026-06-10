@@ -430,3 +430,90 @@ export async function summarizeReport(items: ReportItem[]): Promise<string | nul
     clearTimeout(timer);
   }
 }
+
+export type WeeklyItem = {
+  title: string;
+  source: string;
+  kind: string;
+  tags: string[];
+  whyJa: string | null;
+  summaryJa: string | null;
+  topSeverity: string | null;
+};
+
+// 週報: roll a week's worth of ingested articles into one labeled-section
+// report. One LLM call; null on missing key / failure.
+export async function summarizeWeekly(
+  items: WeeklyItem[],
+  weekRange: string,
+): Promise<string | null> {
+  if (!llmEnabled() || items.length === 0) return null;
+
+  const model = process.env.LLM_MODEL?.trim() || DEFAULT_MODEL;
+  const apiKey = process.env.ANTHROPIC_API_KEY!;
+
+  const list = items
+    .slice(0, 80)
+    .map((it, i) => {
+      const sev = it.topSeverity ? `(CVSS:${it.topSeverity})` : "";
+      const gist = (it.whyJa || it.summaryJa || "").slice(0, 120);
+      const tags = it.tags.length ? ` [${it.tags.join(",")}]` : "";
+      return `#${i} [${it.source}/${it.kind}]${sev}${tags} ${it.title} — ${gist}`;
+    })
+    .join("\n");
+
+  const prompt = [
+    "あなたはセキュリティ編集長です。以下は今週（" + weekRange + "）に収集した記事一覧です。",
+    "1週間を総括する『週報』を日本語で書いてください。",
+    "次の見出しを行頭に【】付きで使い、各見出しの後に2〜4文（または短い箇条書き）:",
+    "【今週の概況】週全体の傾向を俯瞰。",
+    "【主要インシデント】今週最も影響の大きかった事案（複数媒体が報じたものを優先）。",
+    "【悪用された脆弱性 (CVE)】悪用・要パッチの重要脆弱性。CVE番号は明記。無ければ「目立った新規悪用なし」。",
+    "【AI動向】AI/LLM 関連の注目トピック。無ければ省略可。",
+    "【来週への注目】読者（学生エンジニア）が来週ウォッチすべき点を1〜2点。",
+    "",
+    "制約: 誇張せず事実ベース。一覧にない事実は創作しない。前置き・後置き・",
+    "コードフェンス禁止。全体で800字程度。",
+    "",
+    "---記事一覧---",
+    list,
+  ].join("\n");
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 3000,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      // eslint-disable-next-line no-console
+      console.warn(`[weekly] Anthropic HTTP ${res.status}; body: ${body.slice(0, 200)}`);
+      return null;
+    }
+    const json = (await res.json()) as { content?: Array<{ type?: string; text?: string }> };
+    const out = (json.content ?? [])
+      .map((b) => (b.type === "text" ? (b.text ?? "") : ""))
+      .join("\n")
+      .trim();
+    return out || null;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[weekly] error:", err);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}

@@ -1,5 +1,7 @@
 import { getDigest } from "@/lib/digest";
+import { checkKevAlerts } from "@/lib/kevAlert";
 import { notifySlack } from "@/lib/notify";
+import { maybeGenerateWeekly } from "@/lib/weekly";
 
 export const dynamic = "force-dynamic";
 // A refresh fans out feeds + several LLM calls (summary chunks w/ retry, TL;DR,
@@ -51,6 +53,17 @@ export async function GET(request: Request) {
     // completes. Opt out with &notify=0 while testing manually.
     if (refresh && url.searchParams.get("notify") !== "0") {
       await notifySlack(digest);
+
+      // KEV速報: alert on newly-listed actively-exploited CVEs (diff per run;
+      // the first run seeds silently).
+      await checkKevAlerts().catch(() => {});
+
+      // 週報: piggyback on the evening cron — actually generates only on
+      // Sundays (JST) and is idempotent per week. `?weekly=1` forces (testing).
+      const weeklyForce = url.searchParams.get("weekly") === "1";
+      if (weeklyForce || digest.edition === "evening") {
+        await maybeGenerateWeekly(weeklyForce).catch(() => {});
+      }
     }
 
     return new Response(JSON.stringify(digest), {

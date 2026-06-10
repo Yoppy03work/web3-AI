@@ -143,6 +143,8 @@ const memArticles = new Map<string, DigestItem>();
 const memDigests = new Map<string, { generatedAt: string; payload: Digest }>();
 const memBookmarks = new Map<string, string>(); // id -> created_at ISO
 const memCve = new Map<string, CveRef>(); // CVE-ID -> enriched ref
+const memKevSeen = new Map<string, string>(); // CVE-ID -> first_seen ISO
+const memWeekly = new Map<string, { generatedAt: string; report: string }>(); // week_start -> report
 
 // ---------------- schema ----------------
 
@@ -203,6 +205,22 @@ async function ensureSchema(): Promise<void> {
         severity TEXT,
         vector TEXT,
         fetched_at TEXT NOT NULL
+      )`,
+    },
+    {
+      // KEV entries we've already alerted on (or silently seeded on first run).
+      sql: `CREATE TABLE IF NOT EXISTS kev_seen (
+        id TEXT PRIMARY KEY,
+        date_added TEXT,
+        first_seen TEXT NOT NULL
+      )`,
+    },
+    {
+      // One row per ISO week (keyed by the JST Monday of that week).
+      sql: `CREATE TABLE IF NOT EXISTS weekly_reports (
+        week_start TEXT PRIMARY KEY,
+        generated_at TEXT NOT NULL,
+        report TEXT NOT NULL
       )`,
     },
   ]);
@@ -699,6 +717,141 @@ export async function listBookmarkedArticles(limit: number): Promise<DigestItem[
             ORDER BY b.created_at DESC
             LIMIT ?`,
       args: [limit],
+    },
+  ]);
+  return (rows ?? []).map(rowToItem);
+}
+
+// ---------------- KEV alert state ----------------
+
+export async function kevSeenCount(): Promise<number> {
+  if (!dbEnabled()) return memKevSeen.size;
+  await ensureSchema();
+  const [rows] = await pipeline([{ sql: `SELECT count(*) AS n FROM kev_seen` }]);
+  return rows && rows.length ? Number(rows[0].n) : 0;
+}
+
+// Register KEV entries as seen; returns the ids that were NEW (not previously
+// registered). Used to diff each cron run against everything alerted before.
+export async function markKevSeen(
+  entries: Array<{ id: string; dateAdded: string }>,
+): Promise<string[]> {
+  if (entries.length === 0) return [];
+  const now = new Date().toISOString();
+
+  if (!dbEnabled()) {
+    const fresh: string[] = [];
+    for (const e of entries) {
+      if (!memKevSeen.has(e.id)) {
+        memKevSeen.set(e.id, now);
+        fresh.push(e.id);
+      }
+    }
+    return fresh;
+  }
+
+  await ensureSchema();
+  // Find which already exist (chunked: KEV has ~1600 entries on first seed and
+  // SQLite's default param limit is 999).
+  const CHUNK = 400;
+  const existing = new Set<string>();
+  for (let i = 0; i < entries.length; i += CHUNK) {
+    const part = entries.slice(i, i + CHUNK);
+    const placeholders = part.map(() => "?").join(",");
+    const [rows] = await pipeline([
+      {
+        sql: `SELECT id FROM kev_seen WHERE id IN (${placeholders})`,
+        args: part.map((e) => e.id),
+      },
+    ]);
+    for (const r of rows ?? []) existing.add(String(r.id));
+  }
+
+  const fresh = entries.filter((e) => !existing.has(e.id));
+  for (let i = 0; i < fresh.length; i += CHUNK) {
+    const part = fresh.slice(i, i + CHUNK);
+    await pipeline(
+      part.map((e) => ({
+        sql: `INSERT INTO kev_seen (id, date_added, first_seen) VALUES (?,?,?)
+              ON CONFLICT(id) DO NOTHING`,
+        args: [e.id, e.dateAdded || null, now],
+      })),
+    );
+  }
+  return fresh.map((e) => e.id);
+}
+
+// ---------------- weekly reports ----------------
+
+export async function saveWeeklyReport(weekStart: string, report: string): Promise<void> {
+  const now = new Date().toISOString();
+  if (!dbEnabled()) {
+    memWeekly.set(weekStart, { generatedAt: now, report });
+    return;
+  }
+  await ensureSchema();
+  await pipeline([
+    {
+      sql: `INSERT INTO weekly_reports (week_start, generated_at, report) VALUES (?,?,?)
+            ON CONFLICT(week_start) DO UPDATE SET
+              generated_at=excluded.generated_at, report=excluded.report`,
+      args: [weekStart, now, report],
+    },
+  ]);
+}
+
+export async function getWeeklyReport(weekStart: string): Promise<string | null> {
+  if (!dbEnabled()) return memWeekly.get(weekStart)?.report ?? null;
+  await ensureSchema();
+  const [rows] = await pipeline([
+    { sql: `SELECT report FROM weekly_reports WHERE week_start = ? LIMIT 1`, args: [weekStart] },
+  ]);
+  return rows && rows.length ? String(rows[0].report) : null;
+}
+
+export async function listWeeklyReports(
+  limit: number,
+): Promise<Array<{ weekStart: string; generatedAt: string; report: string }>> {
+  if (!dbEnabled()) {
+    return Array.from(memWeekly.entries())
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .slice(0, limit)
+      .map(([weekStart, v]) => ({ weekStart, generatedAt: v.generatedAt, report: v.report }));
+  }
+  await ensureSchema();
+  const [rows] = await pipeline([
+    {
+      sql: `SELECT week_start, generated_at, report FROM weekly_reports
+            ORDER BY week_start DESC LIMIT ?`,
+      args: [limit],
+    },
+  ]);
+  return (rows ?? []).map((r) => ({
+    weekStart: String(r.week_start),
+    generatedAt: String(r.generated_at),
+    report: String(r.report),
+  }));
+}
+
+// Articles ingested since the given JST date (inclusive), newest first.
+export async function articlesSince(dateFrom: string): Promise<DigestItem[]> {
+  if (!dbEnabled()) {
+    // mem fallback keeps no digest_date — return everything we hold (capped),
+    // which in dev is at most a session's worth anyway.
+    return Array.from(memArticles.values())
+      .sort((a, b) => {
+        const ta = a.publishedAt ? Date.parse(a.publishedAt) : 0;
+        const tb = b.publishedAt ? Date.parse(b.publishedAt) : 0;
+        return tb - ta;
+      })
+      .slice(0, 120);
+  }
+  await ensureSchema();
+  const [rows] = await pipeline([
+    {
+      sql: `SELECT * FROM articles WHERE digest_date >= ?
+            ORDER BY published_at DESC LIMIT 120`,
+      args: [dateFrom],
     },
   ]);
   return (rows ?? []).map(rowToItem);
