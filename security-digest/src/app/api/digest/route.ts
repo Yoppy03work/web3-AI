@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { getDigest } from "@/lib/digest";
 import { checkKevAlerts } from "@/lib/kevAlert";
 import { notifySlack } from "@/lib/notify";
@@ -48,22 +49,24 @@ export async function GET(request: Request) {
 
     const digest = await getDigest(refresh);
 
-    // On a real refresh (this is what the cron hits), push a Slack summary.
-    // Await it so the serverless function doesn't freeze before the POST
-    // completes. Opt out with &notify=0 while testing manually.
+    // Post-refresh side work (Slack digest, KEV alert diff, weekly report)
+    // runs via after() so the response isn't held open — the digest build
+    // alone can take ~40s and adding these inline once tripped the 60s
+    // function cap (504). after() keeps the function alive past the response.
+    // Opt out with &notify=0 while testing manually.
     if (refresh && url.searchParams.get("notify") !== "0") {
-      await notifySlack(digest);
-
-      // KEV速報: alert on newly-listed actively-exploited CVEs (diff per run;
-      // the first run seeds silently).
-      await checkKevAlerts().catch(() => {});
-
-      // 週報: piggyback on the evening cron — actually generates only on
-      // Sundays (JST) and is idempotent per week. `?weekly=1` forces (testing).
       const weeklyForce = url.searchParams.get("weekly") === "1";
-      if (weeklyForce || digest.edition === "evening") {
-        await maybeGenerateWeekly(weeklyForce).catch(() => {});
-      }
+      after(async () => {
+        // 週報 first (Sundays / forced; idempotent per week) — it's the one
+        // that must not get starved if the budget runs short.
+        if (weeklyForce || digest.edition === "evening") {
+          await maybeGenerateWeekly(weeklyForce).catch(() => {});
+        }
+        await notifySlack(digest).catch(() => {});
+        // KEV速報: newly-listed actively-exploited CVEs (windowed diff;
+        // first run / bulk states absorb silently).
+        await checkKevAlerts().catch(() => {});
+      });
     }
 
     return new Response(JSON.stringify(digest), {
