@@ -2,21 +2,31 @@
 // push a Slack alert for newly added entries (= newly confirmed in-the-wild
 // exploitation). Runs on every refresh (cron 2×/day); the diff makes it cheap.
 //
-// First run: the catalog already holds ~1600 entries, so we seed them all as
-// "seen" WITHOUT notifying — otherwise the first cron would flood Slack.
+// We only diff the newest WINDOW entries (catalog is sorted by dateAdded desc).
+// Older entries never become "new", so marking the full ~1600-row catalog is
+// unnecessary — windowing keeps each run to 1 SELECT + a small INSERT instead
+// of a multi-second full seed (which once blew the serverless time budget).
+//
+// Flood guards: the first run seeds silently, and ANY run that discovers more
+// than NOTIFY_CAP "new" ids (bulk import, partially-seeded state after a
+// killed run) absorbs them silently instead of spamming Slack.
 
 import { kevSeenCount, markKevSeen } from "./db";
 import { enrichCveIds } from "./digest";
 import { getKev } from "./kev";
 import { notifyKevAlerts } from "./notify";
 
+const WINDOW = 300; // ~10+ months of KEV additions
+const NOTIFY_CAP = 50;
+
 export async function checkKevAlerts(): Promise<{ newCount: number; notified: boolean }> {
   const kev = await getKev();
   if (kev.entries.length === 0) return { newCount: 0, notified: false };
 
+  const window = kev.entries.slice(0, WINDOW);
   const seen = await kevSeenCount();
   const newIds = await markKevSeen(
-    kev.entries.map((e) => ({ id: e.cveID, dateAdded: e.dateAdded })),
+    window.map((e) => ({ id: e.cveID, dateAdded: e.dateAdded })),
   );
 
   if (seen === 0) {
@@ -25,9 +35,14 @@ export async function checkKevAlerts(): Promise<{ newCount: number; notified: bo
     return { newCount: 0, notified: false };
   }
   if (newIds.length === 0) return { newCount: 0, notified: false };
+  if (newIds.length > NOTIFY_CAP) {
+    // eslint-disable-next-line no-console
+    console.log(`[kev] absorbed ${newIds.length} entries silently (bulk/backfill)`);
+    return { newCount: 0, notified: false };
+  }
 
   const newSet = new Set(newIds);
-  const fresh = kev.entries.filter((e) => newSet.has(e.cveID));
+  const fresh = window.filter((e) => newSet.has(e.cveID));
 
   // CVSS for the alert lines (cache-first; small NVD budget — unscored entries
   // just omit the score).
