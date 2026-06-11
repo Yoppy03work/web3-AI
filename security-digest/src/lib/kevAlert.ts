@@ -14,6 +14,7 @@
 import { kevSeenCount, markKevSeen } from "./db";
 import { enrichCveIds } from "./digest";
 import { getKev } from "./kev";
+import { ensureKevJa } from "./kevJa";
 import { notifyKevAlerts } from "./notify";
 
 const WINDOW = 300; // ~10+ months of KEV additions
@@ -44,11 +45,19 @@ export async function checkKevAlerts(): Promise<{ newCount: number; notified: bo
   const newSet = new Set(newIds);
   const fresh = window.filter((e) => newSet.has(e.cveID));
 
-  // CVSS for the alert lines (cache-first; small NVD budget — unscored entries
-  // just omit the score).
-  const cvss = await enrichCveIds(newIds).catch(
-    () => new Map<string, { score: number | null }>(),
-  );
+  // CVSS + Japanese translation for the alert lines. Fresh entries are never
+  // cached, so the translation is a live LLM call — bound it to 8s so a slow
+  // call can't push the must-send alert past the after() time budget (the
+  // underlying call still completes and caches for the page/prewarm). The
+  // alert falls back to English names when the race times out.
+  type JaMap = Map<string, { nameJa: string | null; descJa: string | null }>;
+  const [cvss, ja] = await Promise.all([
+    enrichCveIds(newIds).catch(() => new Map<string, { score: number | null }>()),
+    Promise.race<JaMap>([
+      ensureKevJa(fresh, fresh.length),
+      new Promise<JaMap>((resolve) => setTimeout(() => resolve(new Map()), 8000)),
+    ]).catch((): JaMap => new Map()),
+  ]);
 
   const notified = await notifyKevAlerts(
     fresh.map((e) => ({
@@ -57,6 +66,8 @@ export async function checkKevAlerts(): Promise<{ newCount: number; notified: bo
       product: e.product,
       vulnerabilityName: e.vulnerabilityName,
       knownRansomware: e.knownRansomware,
+      nameJa: ja.get(e.cveID)?.nameJa ?? null,
+      descJa: ja.get(e.cveID)?.descJa ?? null,
     })),
     cvss,
   ).catch(() => false);

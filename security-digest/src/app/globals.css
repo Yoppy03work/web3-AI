@@ -535,6 +535,15 @@ a:hover {
   font-size: 14px;
   color: var(--text);
 }
+.kev-desc {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+.kev-desc-en {
+  opacity: 0.75;
+}
 .kev-coverage {
   margin-top: 8px;
   font-size: 12px;

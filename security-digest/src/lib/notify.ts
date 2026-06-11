@@ -176,6 +176,9 @@ export type KevAlertEntry = {
   product: string;
   vulnerabilityName: string;
   knownRansomware: boolean;
+  // Japanese translation (cache-backed); null falls back to the English name.
+  nameJa?: string | null;
+  descJa?: string | null;
 };
 
 export async function notifyKevAlerts(
@@ -197,10 +200,28 @@ export async function notifyKevAlerts(
     const mark = e.knownRansomware ? "🦠" : "⚠️";
     const score = cvss.get(e.cveID)?.score;
     const scoreTxt = score != null ? ` (CVSS ${score.toFixed(1)})` : "";
-    return `${mark} <https://nvd.nist.gov/vuln/detail/${e.cveID}|${e.cveID}>${scoreTxt} ${esc(
+    const name = e.nameJa || e.vulnerabilityName;
+    const head = `${mark} <https://nvd.nist.gov/vuln/detail/${e.cveID}|${e.cveID}>${scoreTxt} ${esc(
       e.vendorProject,
-    )} / ${esc(e.product)} — ${esc(e.vulnerabilityName)}`;
+    )} / ${esc(e.product)} — ${esc(name)}`;
+    // One-line Japanese description under the heading, when we have it.
+    return e.descJa ? `${head}\n　${esc(e.descJa.slice(0, 200))}` : head;
   });
+
+  // Slack section text caps at 3000 chars and a 400 drops the WHOLE payload —
+  // and this alert is fire-once (ids are already marked seen). Keep whole
+  // lines until ~2700 and fold the rest into the "+N" counter.
+  const kept: string[] = [];
+  let total = 0;
+  let droppedLines = 0;
+  for (const l of lines) {
+    if (total + l.length + 1 > 2700) {
+      droppedLines++;
+      continue;
+    }
+    kept.push(l);
+    total += l.length + 1;
+  }
 
   const payload = {
     text: `🚨 KEV 新規追加 ${entries.length}件 — 悪用が確認された脆弱性`,
@@ -217,7 +238,9 @@ export async function notifyKevAlerts(
         type: "section",
         text: {
           type: "mrkdwn",
-          text: lines.join("\n") + (extra > 0 ? `\n…ほか ${extra} 件` : ""),
+          text:
+            kept.join("\n") +
+            (extra + droppedLines > 0 ? `\n…ほか ${extra + droppedLines} 件` : ""),
         },
       },
       {
