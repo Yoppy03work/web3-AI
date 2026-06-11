@@ -145,6 +145,7 @@ const memBookmarks = new Map<string, string>(); // id -> created_at ISO
 const memCve = new Map<string, CveRef>(); // CVE-ID -> enriched ref
 const memKevSeen = new Map<string, string>(); // CVE-ID -> first_seen ISO
 const memWeekly = new Map<string, { generatedAt: string; report: string }>(); // week_start -> report
+const memKevJa = new Map<string, KevJa>(); // CVE-ID -> Japanese translation
 
 // ---------------- schema ----------------
 
@@ -221,6 +222,16 @@ async function ensureSchema(): Promise<void> {
         week_start TEXT PRIMARY KEY,
         generated_at TEXT NOT NULL,
         report TEXT NOT NULL
+      )`,
+    },
+    {
+      // Japanese translations of KEV entries (name + short description).
+      // Translate-once cache: KEV text never changes for a given CVE.
+      sql: `CREATE TABLE IF NOT EXISTS kev_ja (
+        id TEXT PRIMARY KEY,
+        name_ja TEXT,
+        desc_ja TEXT,
+        translated_at TEXT NOT NULL
       )`,
     },
   ]);
@@ -720,6 +731,59 @@ export async function listBookmarkedArticles(limit: number): Promise<DigestItem[
     },
   ]);
   return (rows ?? []).map(rowToItem);
+}
+
+// ---------------- KEV Japanese translations ----------------
+
+export type KevJa = { nameJa: string | null; descJa: string | null };
+
+export async function getKevJa(ids: string[]): Promise<Map<string, KevJa>> {
+  const out = new Map<string, KevJa>();
+  if (ids.length === 0) return out;
+  if (!dbEnabled()) {
+    for (const id of ids) {
+      const v = memKevJa.get(id);
+      if (v) out.set(id, v);
+    }
+    return out;
+  }
+  await ensureSchema();
+  const CHUNK = 400;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const part = ids.slice(i, i + CHUNK);
+    const placeholders = part.map(() => "?").join(",");
+    const [rows] = await pipeline([
+      { sql: `SELECT id, name_ja, desc_ja FROM kev_ja WHERE id IN (${placeholders})`, args: part },
+    ]);
+    for (const r of rows ?? []) {
+      out.set(String(r.id), {
+        nameJa: r.name_ja == null ? null : String(r.name_ja),
+        descJa: r.desc_ja == null ? null : String(r.desc_ja),
+      });
+    }
+  }
+  return out;
+}
+
+export async function putKevJa(
+  rows: Array<{ id: string; nameJa: string | null; descJa: string | null }>,
+): Promise<void> {
+  if (rows.length === 0) return;
+  const now = new Date().toISOString();
+  if (!dbEnabled()) {
+    for (const r of rows) memKevJa.set(r.id, { nameJa: r.nameJa, descJa: r.descJa });
+    return;
+  }
+  await ensureSchema();
+  await pipeline(
+    rows.map((r) => ({
+      sql: `INSERT INTO kev_ja (id, name_ja, desc_ja, translated_at) VALUES (?,?,?,?)
+            ON CONFLICT(id) DO UPDATE SET
+              name_ja=excluded.name_ja, desc_ja=excluded.desc_ja,
+              translated_at=excluded.translated_at`,
+      args: [r.id, r.nameJa, r.descJa, now],
+    })),
+  );
 }
 
 // ---------------- KEV alert state ----------------

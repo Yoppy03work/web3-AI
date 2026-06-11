@@ -1,10 +1,14 @@
 import Link from "next/link";
 import { getKev } from "@/lib/kev";
 import { enrichCveIds } from "@/lib/digest";
-import { articlesMentioningCves } from "@/lib/db";
+import { articlesMentioningCves, type KevJa } from "@/lib/db";
+import { ensureKevJa } from "@/lib/kevJa";
 import type { CveRef, RelatedRef } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+// Cold-cache views run one bounded LLM translation call (~up to 25s) plus NVD
+// lookups — give the function the same headroom as the other heavy routes.
+export const maxDuration = 60;
 
 const SHOW = 50;
 
@@ -29,10 +33,13 @@ export default async function CvePage() {
   const shown = kev.entries.slice(0, SHOW);
   const ids = shown.map((e) => e.cveID);
 
-  // CVSS (cache-first, small NVD budget) + our own coverage cross-reference.
-  const [cvss, coverage] = await Promise.all([
+  // CVSS (cache-first, small NVD budget) + our own coverage cross-reference
+  // + Japanese translations (cache-first; ≤12 new ones translated per view,
+  // and the cron prewarms the cache so this is usually all cache hits).
+  const [cvss, coverage, ja] = await Promise.all([
     enrichCveIds(ids).catch(() => new Map<string, CveRef>()),
     articlesMentioningCves(ids).catch(() => new Map<string, RelatedRef[]>()),
+    ensureKevJa(shown, 12).catch(() => new Map<string, KevJa>()),
   ]);
 
   return (
@@ -65,6 +72,7 @@ export default async function CvePage() {
           {shown.map((e) => {
             const ref = cvss.get(e.cveID);
             const arts = coverage.get(e.cveID) ?? [];
+            const t = ja.get(e.cveID);
             return (
               <li key={e.cveID} className={`kev-item ${e.knownRansomware ? "kev-ransom" : ""}`}>
                 <div className="kev-head">
@@ -83,7 +91,14 @@ export default async function CvePage() {
                 <div className="kev-vendor">
                   {e.vendorProject} — {e.product}
                 </div>
-                <div className="kev-name">{e.vulnerabilityName}</div>
+                <div className="kev-name" title={t?.nameJa ? e.vulnerabilityName : undefined}>
+                  {t?.nameJa ?? e.vulnerabilityName}
+                </div>
+                {t?.descJa ? (
+                  <p className="kev-desc">{t.descJa}</p>
+                ) : e.shortDescription ? (
+                  <p className="kev-desc kev-desc-en">{e.shortDescription}</p>
+                ) : null}
                 {arts.length > 0 ? (
                   <div className="kev-coverage">
                     📰 関連記事:
@@ -103,6 +118,7 @@ export default async function CvePage() {
       <footer className="ftr">
         <p className="dim">
           出典: CISA KEV Catalog（{SHOW}件表示）。CVSS は NVD（キャッシュ＋少数ずつ取得）。
+          脆弱性名・説明は LLM による日本語訳（翻訳済みから順次表示、未訳は英語のまま）。
           「📰 関連記事」は本ダイジェストが取り込んだ記事との突合。
         </p>
       </footer>

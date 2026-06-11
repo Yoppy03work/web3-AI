@@ -431,6 +431,114 @@ export async function summarizeReport(items: ReportItem[]): Promise<string | nul
   }
 }
 
+export type KevTranslateInput = { id: string; name: string; desc: string };
+export type KevTranslateResult = { nameJa: string | null; descJa: string | null };
+
+const KEV_TRANSLATE_CHUNK = 15;
+
+// Translate KEV entries (vulnerability name + short description) to Japanese.
+// One LLM call per chunk; returns a map id→translation. Missing key / failure
+// returns an empty map (callers fall back to English). Results are meant to be
+// cached by the caller — KEV text never changes for a given CVE.
+export async function translateKevBatch(
+  entries: KevTranslateInput[],
+): Promise<Map<string, KevTranslateResult>> {
+  const out = new Map<string, KevTranslateResult>();
+  if (!llmEnabled() || entries.length === 0) return out;
+
+  const chunks: KevTranslateInput[][] = [];
+  for (let i = 0; i < entries.length; i += KEV_TRANSLATE_CHUNK) {
+    chunks.push(entries.slice(i, i + KEV_TRANSLATE_CHUNK));
+  }
+  const results = await Promise.all(chunks.map((c) => translateKevChunk(c)));
+  for (const m of results) for (const [k, v] of m) out.set(k, v);
+  return out;
+}
+
+async function translateKevChunk(
+  entries: KevTranslateInput[],
+): Promise<Map<string, KevTranslateResult>> {
+  const model = process.env.LLM_MODEL?.trim() || DEFAULT_MODEL;
+  const apiKey = process.env.ANTHROPIC_API_KEY!;
+  const out = new Map<string, KevTranslateResult>();
+
+  const list = entries
+    .map(
+      (e, i) =>
+        `#${i}\nNAME: ${(e.name || "").slice(0, 200)}\nDESC: ${(e.desc || "").slice(0, 400)}`,
+    )
+    .join("\n\n");
+
+  const prompt = [
+    "あなたはセキュリティ専門の翻訳者です。以下は CISA KEV（悪用が確認された脆弱性）の",
+    "エントリです。それぞれ脆弱性名と説明を自然な日本語に翻訳してください。",
+    "",
+    "出力は **JSON 配列のみ**。コードフェンスや前置きは禁止。各要素:",
+    `  {"index": <番号(整数)>, "nameJa": "<脆弱性名の日本語訳>", "descJa": "<説明の日本語訳(1〜2文)>"}`,
+    "",
+    "・製品名・ベンダ名・CVE 番号・プロトコル名は原文ママ。",
+    "・「〜の脆弱性」のような自然なセキュリティ用語の言い回しにする。",
+    "・DESC が空の場合 descJa は空文字でよい。index は必ず一致させること。",
+    "",
+    "---エントリ一覧---",
+    list,
+  ].join("\n");
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 8192,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      // eslint-disable-next-line no-console
+      console.warn(`[kev-ja] Anthropic HTTP ${res.status}; body: ${body.slice(0, 200)}`);
+      return out;
+    }
+    const json = (await res.json()) as { content?: Array<{ type?: string; text?: string }> };
+    const text = (json.content ?? [])
+      .map((b) => (b.type === "text" ? (b.text ?? "") : ""))
+      .join("\n")
+      .trim();
+    const parsed = extractJsonArray(text);
+    if (!Array.isArray(parsed)) return out;
+    for (const raw of parsed) {
+      if (!raw || typeof raw !== "object") continue;
+      const e = raw as { index?: unknown; nameJa?: unknown; descJa?: unknown };
+      if (typeof e.index !== "number" || !entries[e.index]) continue;
+      const nameJa = typeof e.nameJa === "string" && e.nameJa.trim() ? e.nameJa.trim() : null;
+      const descJa = typeof e.descJa === "string" && e.descJa.trim() ? e.descJa.trim() : null;
+      // Don't cache a half-translation: a row with nameJa but no descJa (when
+      // the source HAS a description) would freeze the description in English
+      // forever (cache hits skip retranslation). Leave it untranslated so a
+      // later budgeted call retries the whole entry.
+      const srcHasDesc = !!(entries[e.index].desc || "").trim();
+      if (srcHasDesc && !descJa) continue;
+      if (nameJa || descJa) out.set(entries[e.index].id, { nameJa, descJa });
+    }
+    return out;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[kev-ja] error:", err);
+    return out;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export type WeeklyItem = {
   title: string;
   source: string;

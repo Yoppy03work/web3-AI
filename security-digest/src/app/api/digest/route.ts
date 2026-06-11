@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import { getDigest } from "@/lib/digest";
 import { checkKevAlerts } from "@/lib/kevAlert";
+import { prewarmKevJa } from "@/lib/kevJa";
 import { notifySlack } from "@/lib/notify";
 import { maybeGenerateWeekly } from "@/lib/weekly";
 
@@ -66,6 +67,8 @@ export async function GET(request: Request) {
         // KEV速報: newly-listed actively-exploited CVEs (windowed diff;
         // first run / bulk states absorb silently).
         await checkKevAlerts().catch(() => {});
+        // Pre-translate the /cve page's visible window so views are cache-hits.
+        await prewarmKevJa().catch(() => {});
       });
     }
 
