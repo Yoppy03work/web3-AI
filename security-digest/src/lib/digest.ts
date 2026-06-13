@@ -162,7 +162,11 @@ async function buildDigest(): Promise<Digest> {
     tagged.map(async (it) => ({ ...it, id: await articleId(it.link) })),
   );
 
-  const summaries = await summarizeBatch(withIds);
+  // Native-Japanese sources (lang:"ja") skip the LLM entirely — their RSS
+  // excerpt is already a Japanese summary. Only English items go to the batch.
+  const enItems = withIds.filter((it) => it.lang !== "ja");
+  const enSummaries = await summarizeBatch(enItems);
+  const byId = new Map(enItems.map((it, i) => [it.id, enSummaries[i]]));
 
   // Extract CVE IDs per item (title + excerpt), then enrich with CVSS from the
   // CVE cache + a small NVD budget. See enrichCves below.
@@ -171,7 +175,10 @@ async function buildDigest(): Promise<Digest> {
   );
 
   const items: DigestItem[] = withIds.map((it, i) => {
-    const s = summaries[i] ?? { summaryJa: it.excerpt || null, whyJa: null, llm: false };
+    const s =
+      it.lang === "ja"
+        ? { summaryJa: it.excerpt || null, whyJa: null, llm: false }
+        : byId.get(it.id) ?? { summaryJa: it.excerpt || null, whyJa: null, llm: false };
     return {
       ...it,
       summaryJa: s.summaryJa,

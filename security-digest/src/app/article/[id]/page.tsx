@@ -53,15 +53,19 @@ export default async function ArticlePage({ params }: ArticleParams) {
   }
   const hasBody = body !== null && body !== "";
 
-  // --- lazy translation ---
+  // Native-Japanese source: the crawled body is already Japanese — no
+  // translation, no English-original framing.
+  const isJa = article.lang === "ja";
+
+  // --- lazy translation (English sources only) ---
   // Storage convention is identical: null=not tried, ""=tried+failed, "..."=ok.
   let bodyJa = article.bodyJa;
-  if (hasBody && bodyJa == null && llmEnabled()) {
+  if (!isJa && hasBody && bodyJa == null && llmEnabled()) {
     const translated = await translateLong(body as string);
     bodyJa = translated ?? "";
     await patchArticle(id, { bodyJa }).catch(() => {});
   }
-  const hasJa = bodyJa !== null && bodyJa !== "";
+  const hasJa = !isJa && bodyJa !== null && bodyJa !== "";
 
   return (
     <main className="shell">
@@ -100,7 +104,9 @@ export default async function ArticlePage({ params }: ArticleParams) {
           <section className="detail-summary">
             <h2 className="section-h">日本語要約</h2>
             <p>{article.summaryJa}</p>
-            {!article.llm ? (
+            {isJa ? (
+              <p className="hint">（日本語ソース・原文の要約）</p>
+            ) : !article.llm ? (
               <p className="hint">（LLM 要約に失敗したため、英語原文の抜粋を表示）</p>
             ) : null}
           </section>
@@ -126,11 +132,14 @@ export default async function ArticlePage({ params }: ArticleParams) {
         <section className="detail-body">
           <h2 className="section-h">
             本文
-            {hasJa ? <span className="lang-tag">日本語訳</span> : null}
-            {!hasJa && hasBody ? <span className="lang-tag warn">原文</span> : null}
+            {!isJa && hasJa ? <span className="lang-tag">日本語訳</span> : null}
+            {!isJa && !hasJa && hasBody ? <span className="lang-tag warn">原文</span> : null}
           </h2>
 
-          {hasJa ? (
+          {isJa && hasBody ? (
+            // Native Japanese — crawled body shown as-is.
+            <div className="body-text">{body}</div>
+          ) : hasJa ? (
             <div className="body-text">{bodyJa}</div>
           ) : hasBody ? (
             <>
@@ -147,7 +156,7 @@ export default async function ArticlePage({ params }: ArticleParams) {
             </p>
           )}
 
-          {hasJa && hasBody ? (
+          {!isJa && hasJa && hasBody ? (
             <details className="orig-toggle">
               <summary>原文（English）を表示</summary>
               <div className="body-text body-text-orig">{body}</div>

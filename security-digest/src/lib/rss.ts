@@ -140,6 +140,7 @@ function parseRssItem(xml: string, source: Source): RawItem | null {
   return {
     source: source.name,
     kind: source.kind,
+    lang: source.lang ?? "en",
     title,
     link,
     excerpt: cleanText(desc, EXCERPT_MAX),
@@ -162,6 +163,7 @@ function parseAtomEntry(xml: string, source: Source): RawItem | null {
   return {
     source: source.name,
     kind: source.kind,
+    lang: source.lang ?? "en",
     title,
     link: cleanText(link, 2048),
     excerpt: cleanText(desc, EXCERPT_MAX),

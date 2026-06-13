@@ -11,6 +11,8 @@ export const SOURCES: Source[] = [
   { name: "Krebs on Security", url: "https://krebsonsecurity.com/feed/", kind: "news" },
   { name: "Dark Reading", url: "https://www.darkreading.com/rss.xml", kind: "news" },
   { name: "Schneier on Security", url: "https://www.schneier.com/feed/atom/", kind: "news" },
+  // 日本語ソース: RSS抜粋が既に日本語なので LLM 要約/翻訳をスキップ（lang:"ja"）。
+  { name: "Security NEXT", url: "https://www.security-next.com/feed", kind: "news", lang: "ja" },
 
   // ---- research (Black Hat lacks an RSS feed; these are the closest in caliber) ----
   { name: "Google Project Zero", url: "https://googleprojectzero.blogspot.com/feeds/posts/default", kind: "research" },
@@ -60,6 +62,12 @@ export const TAGS: Record<string, string[]> = {
     "chatbot",
     "model context protocol",
     "mcp ",
+    // 日本語
+    "生成ai",
+    "人工知能",
+    "大規模言語モデル",
+    "プロンプトインジェクション",
+    "ディープフェイク",
   ],
   "脆弱性/CVE": [
     "vulnerabilit",
@@ -77,6 +85,13 @@ export const TAGS: Record<string, string[]> = {
     "side-channel",
     "sql injection",
     "xss",
+    // 日本語
+    "脆弱性",
+    "ゼロデイ",
+    "コード実行",
+    "権限昇格",
+    "悪用",
+    "パッチ",
   ],
   "ランサムウェア": [
     "ransom",
@@ -89,6 +104,9 @@ export const TAGS: Record<string, string[]> = {
     "play ransom",
     "extortion",
     "double extortion",
+    // 日本語
+    "ランサム",
+    "身代金",
   ],
   "ソーシャル/フィッシング": [
     "phish",
@@ -101,6 +119,12 @@ export const TAGS: Record<string, string[]> = {
     "impersonat",
     "credential theft",
     "fake login",
+    // 日本語
+    "フィッシング",
+    "詐欺",
+    "なりすまし",
+    "標的型",
+    "ソーシャルエンジニアリング",
   ],
   "サプライチェーン": [
     "supply chain",
@@ -114,6 +138,8 @@ export const TAGS: Record<string, string[]> = {
     "malicious package",
     "open source",
     "sbom",
+    // 日本語
+    "サプライチェーン",
   ],
   "データ侵害": [
     "data breach",
@@ -125,6 +151,12 @@ export const TAGS: Record<string, string[]> = {
     "data theft",
     "exfiltrat",
     "records exposed",
+    // 日本語
+    "情報流出",
+    "情報漏",
+    "個人情報",
+    "不正アクセス",
+    "データ侵害",
   ],
   "マルウェア": [
     "malware",
@@ -140,6 +172,11 @@ export const TAGS: Record<string, string[]> = {
     "worm",
     "rat ",
     "remote access trojan",
+    // 日本語
+    "マルウェア",
+    "ウイルス",
+    "ウイルス感染",
+    "バックドア",
   ],
   "暗号/Crypto": [
     "cryptograph",
@@ -153,6 +190,10 @@ export const TAGS: Record<string, string[]> = {
     "lattice",
     "tls ",
     "key exchange",
+    // 日本語（暗号資産=cryptocurrency の誤爆を避けるため「暗号」単体は入れない）
+    "暗号化",
+    "ポスト量子",
+    "耐量子",
   ],
 };
 

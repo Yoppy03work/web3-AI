@@ -102,7 +102,9 @@ export default function FeedClient({ items, tags, llmEnabled, savedIds }: Props)
                 <p className="summary dim">（要約なし）</p>
               )}
 
-              {it.llm ? null : (
+              {it.lang === "ja" ? (
+                <p className="hint">（日本語ソース・原文の要約）</p>
+              ) : it.llm ? null : (
                 <p className="hint">
                   {llmEnabled
                     ? "（LLM 要約に失敗したため、英語原文の抜粋を表示）"

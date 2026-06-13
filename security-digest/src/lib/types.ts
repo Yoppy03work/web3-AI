@@ -1,14 +1,21 @@
 export type SourceKind = "news" | "research" | "paper" | "ai";
 
+// Source language. "ja" sources are already Japanese, so the pipeline skips
+// LLM summarization/translation for them (excerpt is shown as-is, body crawled
+// and displayed directly).
+export type SourceLang = "en" | "ja";
+
 export type Source = {
   name: string;
   url: string;
   kind: SourceKind;
+  lang?: SourceLang; // defaults to "en"
 };
 
 export type RawItem = {
   source: string;
   kind: SourceKind;
+  lang: SourceLang;
   title: string;
   link: string;
   excerpt: string;

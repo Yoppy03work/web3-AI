@@ -37,7 +37,7 @@
 
 | 種別 | 媒体 |
 | --- | --- |
-| news | The Hacker News / BleepingComputer / Krebs on Security / Dark Reading / Schneier on Security |
+| news | The Hacker News / BleepingComputer / Krebs on Security / Dark Reading / Schneier on Security / Security NEXT(日本語) |
 | research | Google Project Zero / PortSwigger Research |
 | paper | arXiv cs.CR / IACR ePrint |
 | ai | Simon Willison / The Decoder（AIの最新動向。ついで枠） |
@@ -49,6 +49,10 @@
 
 論文系は 1 日数十本入るので、フロントが特定フィードで埋まらないよう、表示・要約する
 上位 N 件は **1 ソースあたり最大 4 件** に制限している（`PER_SOURCE_CAP`）。
+
+**日本語ソース**（`lang: "ja"`、例: Security NEXT）は RSS 抜粋が既に日本語なので、
+**LLM 要約・翻訳をスキップ**して抜粋をそのまま要約に使い、本文はクロール表示する
+（AI コスト不要・即時）。タグ付け / CVE 抽出 / 続報クラスタは通常どおり効く。
 
 ## ローカルで動かす
 
