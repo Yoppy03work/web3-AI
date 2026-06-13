@@ -241,6 +241,7 @@ async function ensureSchema(): Promise<void> {
   for (const sql of [
     "ALTER TABLE articles ADD COLUMN cves TEXT",
     "ALTER TABLE articles ADD COLUMN related TEXT",
+    "ALTER TABLE articles ADD COLUMN lang TEXT",
     "ALTER TABLE digests ADD COLUMN edition TEXT",
   ]) {
     try {
@@ -281,6 +282,7 @@ function rowToItem(r: Row): DigestItem {
     id: String(r.id),
     source: String(r.source),
     kind: String(r.kind) as SourceKind,
+    lang: r.lang === "ja" ? "ja" : "en",
     title: String(r.title),
     link: String(r.link),
     excerpt: r.excerpt == null ? "" : String(r.excerpt),
@@ -366,15 +368,15 @@ export async function saveDigest(d: Digest): Promise<void> {
     stmts.push({
       sql: `INSERT INTO articles
         (id, source, kind, title, link, excerpt, published_at, digest_date,
-         tags, summary_ja, why_ja, body, body_ja, llm, first_seen, cves, related)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         tags, summary_ja, why_ja, body, body_ja, llm, first_seen, cves, related, lang)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
           source=excluded.source, kind=excluded.kind, title=excluded.title,
           link=excluded.link, excerpt=excluded.excerpt,
           published_at=excluded.published_at, digest_date=excluded.digest_date,
           tags=excluded.tags, summary_ja=excluded.summary_ja,
           why_ja=excluded.why_ja, llm=excluded.llm, cves=excluded.cves,
-          related=excluded.related`,
+          related=excluded.related, lang=excluded.lang`,
       args: [
         it.id,
         it.source,
@@ -393,6 +395,7 @@ export async function saveDigest(d: Digest): Promise<void> {
         d.generatedAt,
         JSON.stringify(it.cves ?? []),
         JSON.stringify(it.related ?? []),
+        it.lang,
       ],
     });
   }
