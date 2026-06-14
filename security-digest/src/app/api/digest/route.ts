@@ -82,8 +82,9 @@ export async function GET(request: Request) {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[api/digest] error:", err);
+    // Keep details in the server log only; don't leak internals to clients.
     return new Response(
-      JSON.stringify({ error: "internal_error", message: String(err) }),
+      JSON.stringify({ error: "internal_error" }),
       {
         status: 500,
         headers: {

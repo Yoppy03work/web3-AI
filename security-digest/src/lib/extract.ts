@@ -216,22 +216,44 @@ function isSafeFetchUrl(raw: string): boolean {
   return true;
 }
 
-export async function extractBody(url: string): Promise<string | null> {
-  if (!isSafeFetchUrl(url)) return null;
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      signal: ctrl.signal,
+const MAX_REDIRECTS = 4;
+
+// Follow redirects MANUALLY so each hop's URL is re-checked by isSafeFetchUrl.
+// With redirect:"follow", an attacker-controlled public URL could 302 to
+// http://169.254.169.254/ or a private IP and the guard (which only saw the
+// original URL) would be bypassed.
+async function safeFetch(url: string, signal: AbortSignal): Promise<Response | null> {
+  let current = url;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    if (!isSafeFetchUrl(current)) return null;
+    const res = await fetch(current, {
+      signal,
       cache: "no-store",
-      redirect: "follow",
+      redirect: "manual",
       headers: {
         "user-agent": UA,
         accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.1",
         "accept-language": "en;q=0.9,*;q=0.5",
       },
     });
-    if (!res.ok) return null;
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get("location");
+      if (!loc) return null;
+      current = new URL(loc, current).toString(); // resolve relative redirects
+      continue;
+    }
+    return res;
+  }
+  return null; // too many redirects
+}
+
+export async function extractBody(url: string): Promise<string | null> {
+  if (!isSafeFetchUrl(url)) return null;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await safeFetch(url, ctrl.signal);
+    if (!res || !res.ok) return null;
     const html = await res.text();
     // 1) drop trailing related/comments/bio sections, 2) strip nav/aside/etc.,
     // 3) pick the richest article container's paragraphs (boilerplate-filtered).

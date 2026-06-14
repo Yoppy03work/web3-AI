@@ -277,6 +277,28 @@ export async function translateLong(text: string): Promise<string | null> {
   }
 }
 
+// Parse the model's bullet output into up to `max` clean lines. Splits ONLY at
+// line-leading "・" markers — so an in-sentence middle-dot (e.g. "Fable 5・
+// Mythos 5") is NOT treated as a new bullet, and a bullet the model soft-wrapped
+// across multiple physical lines is merged (its continuation isn't discarded).
+function parseBullets(out: string, max: number): string | null {
+  const text = out.trim();
+  if (!text) return null;
+  const first = text.indexOf("・");
+  if (first < 0) {
+    const lines = text.split("\n").map((l) => l.trim()).filter(Boolean).slice(0, max);
+    return lines.length ? lines.join("\n") : null;
+  }
+  const bullets = text
+    .slice(first)
+    .split(/\n\s*・/) // only newline-then-marker starts a new bullet
+    .map((s) => s.replace(/^・/, "").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .slice(0, max)
+    .map((s) => "・" + s);
+  return bullets.length ? bullets.join("\n") : null;
+}
+
 // Roll up the run's items into a short Japanese TL;DR (3 bullet lines). One LLM
 // call. Returns null on missing key / failure — the UI just hides the box.
 export async function summarizeTldr(
@@ -316,7 +338,7 @@ export async function summarizeTldr(
       },
       body: JSON.stringify({
         model,
-        max_tokens: 1024,
+        max_tokens: 2048,
         messages: [{ role: "user", content: prompt }],
       }),
       cache: "no-store",
@@ -332,14 +354,7 @@ export async function summarizeTldr(
       .map((b) => (b.type === "text" ? (b.text ?? "") : ""))
       .join("\n")
       .trim();
-    // Keep only bullet lines if the model added stray prose; cap at 3.
-    const lines = out
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-    const bullets = lines.filter((l) => l.startsWith("・"));
-    const chosen = (bullets.length ? bullets : lines).slice(0, 3);
-    return chosen.length ? chosen.join("\n") : null;
+    return parseBullets(out, 3);
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn("[tldr] error:", err);
