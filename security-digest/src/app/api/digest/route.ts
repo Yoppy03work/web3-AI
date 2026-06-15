@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import { getDigest } from "@/lib/digest";
 import { checkKevAlerts } from "@/lib/kevAlert";
+import { checkKeywordAlerts } from "@/lib/keywordAlert";
 import { prewarmKevJa } from "@/lib/kevJa";
 import { notifySlack } from "@/lib/notify";
 import { maybeGenerateWeekly } from "@/lib/weekly";
@@ -64,6 +65,8 @@ export async function GET(request: Request) {
           await maybeGenerateWeekly(weeklyForce).catch(() => {});
         }
         await notifySlack(digest).catch(() => {});
+        // キーワード購読アラート: WATCH_KEYWORDS に一致した新着記事を通知。
+        await checkKeywordAlerts(digest).catch(() => {});
         // KEV速報: newly-listed actively-exploited CVEs (windowed diff;
         // first run / bulk states absorb silently).
         await checkKevAlerts().catch(() => {});

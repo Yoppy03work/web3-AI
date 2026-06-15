@@ -257,6 +257,44 @@ export async function notifyKevAlerts(
   return postSlack(url, payload);
 }
 
+// ---------------- keyword watch alert ----------------
+
+export async function notifyKeywordMatches(
+  matches: Array<{
+    item: { id: string; source: string; title: string; summaryJa: string | null };
+    keywords: string[];
+  }>,
+): Promise<boolean> {
+  const url = process.env.SLACK_WEBHOOK_URL?.trim();
+  if (!url || matches.length === 0) return false;
+  const base = siteUrl();
+
+  const lines = matches.slice(0, 10).map((m) => {
+    const kw = m.keywords.map((k) => `\`${esc(k)}\``).join(" ");
+    return `• ${kw} <${base}/article/${m.item.id}|${esc(m.item.title)}> _${esc(m.item.source)}_`;
+  });
+
+  const payload = {
+    text: `🔎 ウォッチ中のキーワードに一致（${matches.length}件）`,
+    blocks: [
+      {
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: `🔎 ウォッチ一致（${matches.length}件）`,
+          emoji: true,
+        },
+      },
+      { type: "section", text: { type: "mrkdwn", text: lines.join("\n") } },
+      {
+        type: "context",
+        elements: [{ type: "mrkdwn", text: `WATCH_KEYWORDS · <${base}/|ダイジェストを開く>` }],
+      },
+    ],
+  };
+  return postSlack(url, payload);
+}
+
 // ---------------- weekly report (週報) ----------------
 
 export async function notifyWeekly(
