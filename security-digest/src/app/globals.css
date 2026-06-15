@@ -549,6 +549,20 @@ a:hover {
   font-weight: 600;
 }
 
+.card-thumb-link {
+  display: block;
+  margin: 4px 0 10px;
+}
+.card-thumb {
+  display: block;
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+}
+
 .summary {
   margin: 6px 0 8px;
   color: var(--text);

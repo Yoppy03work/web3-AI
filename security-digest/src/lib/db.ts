@@ -250,6 +250,7 @@ async function ensureSchema(): Promise<void> {
     "ALTER TABLE articles ADD COLUMN cves TEXT",
     "ALTER TABLE articles ADD COLUMN related TEXT",
     "ALTER TABLE articles ADD COLUMN lang TEXT",
+    "ALTER TABLE articles ADD COLUMN image TEXT",
     "ALTER TABLE digests ADD COLUMN edition TEXT",
   ]) {
     try {
@@ -303,6 +304,7 @@ function rowToItem(r: Row): DigestItem {
     llm: Number(r.llm) === 1,
     cves: r.cves ? safeCves(String(r.cves)) : [],
     related: r.related ? safeRelated(String(r.related)) : [],
+    image: r.image == null ? null : String(r.image),
   };
 }
 
@@ -376,15 +378,15 @@ export async function saveDigest(d: Digest): Promise<void> {
     stmts.push({
       sql: `INSERT INTO articles
         (id, source, kind, title, link, excerpt, published_at, digest_date,
-         tags, summary_ja, why_ja, body, body_ja, llm, first_seen, cves, related, lang)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         tags, summary_ja, why_ja, body, body_ja, llm, first_seen, cves, related, lang, image)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
           source=excluded.source, kind=excluded.kind, title=excluded.title,
           link=excluded.link, excerpt=excluded.excerpt,
           published_at=excluded.published_at, digest_date=excluded.digest_date,
           tags=excluded.tags, summary_ja=excluded.summary_ja,
           why_ja=excluded.why_ja, llm=excluded.llm, cves=excluded.cves,
-          related=excluded.related, lang=excluded.lang`,
+          related=excluded.related, lang=excluded.lang, image=excluded.image`,
       args: [
         it.id,
         it.source,
@@ -404,6 +406,7 @@ export async function saveDigest(d: Digest): Promise<void> {
         JSON.stringify(it.cves ?? []),
         JSON.stringify(it.related ?? []),
         it.lang,
+        it.image,
       ],
     });
   }
@@ -742,6 +745,34 @@ export async function listBookmarkedArticles(limit: number): Promise<DigestItem[
     },
   ]);
   return (rows ?? []).map(rowToItem);
+}
+
+// Cached OG thumbnails for the given ids → id->image. Lets the digest build
+// skip re-fetching images for articles seen before.
+export async function getArticleImages(ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (ids.length === 0) return out;
+  if (!dbEnabled()) {
+    for (const id of ids) {
+      const img = memArticles.get(id)?.image;
+      if (img) out.set(id, img);
+    }
+    return out;
+  }
+  await ensureSchema();
+  const CHUNK = 400;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const part = ids.slice(i, i + CHUNK);
+    const placeholders = part.map(() => "?").join(",");
+    const [rows] = await pipeline([
+      {
+        sql: `SELECT id, image FROM articles WHERE id IN (${placeholders}) AND image IS NOT NULL`,
+        args: part,
+      },
+    ]);
+    for (const r of rows ?? []) out.set(String(r.id), String(r.image));
+  }
+  return out;
 }
 
 // ---------------- keyword-alert dedup ----------------

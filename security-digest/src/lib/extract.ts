@@ -273,3 +273,51 @@ export async function extractBody(url: string): Promise<string | null> {
     clearTimeout(t);
   }
 }
+
+const OG_TIMEOUT_MS = 6000;
+
+function findMeta(html: string, names: string[]): string | null {
+  // Match <meta ... property|name="X" ... content="Y"> in either attribute
+  // order. Returns the first content for the first matching name.
+  for (const name of names) {
+    const safe = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const a = new RegExp(
+      `<meta[^>]+(?:property|name)\\s*=\\s*["']${safe}["'][^>]*\\scontent\\s*=\\s*["']([^"']+)["']`,
+      "i",
+    ).exec(html);
+    if (a?.[1]) return a[1];
+    const b = new RegExp(
+      `<meta[^>]+content\\s*=\\s*["']([^"']+)["'][^>]*(?:property|name)\\s*=\\s*["']${safe}["']`,
+      "i",
+    ).exec(html);
+    if (b?.[1]) return b[1];
+  }
+  return null;
+}
+
+// Best-effort OG/Twitter thumbnail for an article. SSRF-guarded fetch (manual
+// redirect re-validation via safeFetch). Returns an absolute http(s) URL or null.
+export async function extractOgImage(url: string): Promise<string | null> {
+  if (!isSafeFetchUrl(url)) return null;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), OG_TIMEOUT_MS);
+  try {
+    const res = await safeFetch(url, ctrl.signal);
+    if (!res || !res.ok) return null;
+    const html = (await res.text()).slice(0, 200_000); // og tags live in <head>
+    const raw = findMeta(html, ["og:image", "og:image:url", "twitter:image", "twitter:image:src"]);
+    if (!raw) return null;
+    let abs: URL;
+    try {
+      abs = new URL(decodeEntities(raw.trim()), url);
+    } catch {
+      return null;
+    }
+    if (abs.protocol !== "http:" && abs.protocol !== "https:") return null;
+    return abs.toString();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}

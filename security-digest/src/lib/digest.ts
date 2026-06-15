@@ -1,10 +1,12 @@
 import { articleId } from "./id";
 import { computeClusters } from "./cluster";
 import { extractCveIds, fetchCvss, topSeverity } from "./cve";
+import { extractOgImage } from "./extract";
 import { diversify, fetchAllFeeds } from "./rss";
 import { SOURCES, TAGS, tagsFor } from "./sources";
 import {
   dbEnabled,
+  getArticleImages,
   getArticleRow,
   getCveCache,
   getDigestSnapshot,
@@ -144,6 +146,26 @@ async function enrichCves(idsByItem: string[][]): Promise<CveRef[][]> {
   );
 }
 
+// OG/Twitter thumbnails, cache-first: reuse images already stored for these
+// articles; only fetch (best-effort, in parallel) the misses. Papers (arXiv/
+// IACR) are skipped — no meaningful thumbnail. Returns id→imageUrl.
+async function enrichImages(
+  items: Array<{ id: string; link: string; kind: string }>,
+): Promise<Map<string, string>> {
+  if (items.length === 0) return new Map();
+  const cache = await getArticleImages(items.map((it) => it.id)).catch(
+    () => new Map<string, string>(),
+  );
+  const misses = items.filter((it) => it.kind !== "paper" && !cache.has(it.id));
+  const results = await Promise.allSettled(
+    misses.map((it) => extractOgImage(it.link).then((img) => [it.id, img] as const)),
+  );
+  for (const r of results) {
+    if (r.status === "fulfilled" && r.value[1]) cache.set(r.value[0], r.value[1]);
+  }
+  return cache;
+}
+
 async function buildDigest(): Promise<Digest> {
   const maxItems = readInt("DIGEST_MAX_ITEMS", DEFAULT_MAX_ITEMS);
 
@@ -162,6 +184,10 @@ async function buildDigest(): Promise<Digest> {
     tagged.map(async (it) => ({ ...it, id: await articleId(it.link) })),
   );
 
+  // OG thumbnails run in parallel with the LLM/CVE work (independent — needs
+  // only the links). Awaited below when assembling items.
+  const imagesP = enrichImages(withIds);
+
   // Native-Japanese sources (lang:"ja") skip the LLM entirely — their RSS
   // excerpt is already a Japanese summary. Only English items go to the batch.
   const enItems = withIds.filter((it) => it.lang !== "ja");
@@ -173,6 +199,8 @@ async function buildDigest(): Promise<Digest> {
   const cvesByItem = await enrichCves(
     withIds.map((it) => extractCveIds(`${it.title} ${it.excerpt}`)),
   );
+
+  const images = await imagesP.catch(() => new Map<string, string>());
 
   const items: DigestItem[] = withIds.map((it, i) => {
     const s =
@@ -188,6 +216,7 @@ async function buildDigest(): Promise<Digest> {
       bodyJa: null,
       cves: cvesByItem[i],
       related: [],
+      image: images.get(it.id) ?? null,
     };
   });
 

@@ -56,6 +56,8 @@ export type DigestItem = RawItem & {
   // Other articles in this run covering the same incident (other outlets).
   // Only populated for cross-outlet clusters. Empty otherwise.
   related: RelatedRef[];
+  // OG/Twitter thumbnail URL (fetched at build, best-effort). null if none.
+  image: string | null;
 };
 
 export type Edition = "morning" | "evening";

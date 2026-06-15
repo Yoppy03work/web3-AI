@@ -200,6 +200,20 @@ export default function FeedClient({ items, tags, llmEnabled, savedIds }: Props)
                   <BookmarkButton id={it.id} initial={savedSet.has(it.id)} />
                 </h2>
 
+                {it.image ? (
+                  <Link href={`/article/${it.id}`} onClick={() => markRead(it.id)} className="card-thumb-link">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      className="card-thumb"
+                      src={it.image}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      referrerPolicy="no-referrer"
+                    />
+                  </Link>
+                ) : null}
+
                 {it.summaryJa ? (
                   <p className="summary">{it.summaryJa}</p>
                 ) : (
