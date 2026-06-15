@@ -86,6 +86,7 @@ npm run build && npm start
 | `CRON_SECRET` | 設定すると Vercel Cron が `Authorization: Bearer` で自動認証。本番推奨。どちらか設定時、未認証の refresh は 401 | （空） |
 | `SLACK_WEBHOOK_URL` | Slack Incoming Webhook。設定すると毎朝の更新時に要約を投稿 | （空） |
 | `SITE_URL` | Slack メッセージ内リンクの基準 URL（Vercel では自動検出） | （空） |
+| `WATCH_KEYWORDS` | キーワード購読アラート。カンマ区切り。一致した新着記事を Slack 通知（記事単位で重複排除） | （空） |
 | `SLACK_MIN_SEVERITY` | 重大のみ通知。`CRITICAL`/`HIGH`/`MEDIUM`/`LOW`。該当なしの回は投稿しない | （空＝毎回通知） |
 | `TURSO_DATABASE_URL` | Turso DB の URL（`libsql://` でも可、自動で https に変換） | （空） |
 | `TURSO_AUTH_TOKEN` | Turso のアクセストークン | （空） |

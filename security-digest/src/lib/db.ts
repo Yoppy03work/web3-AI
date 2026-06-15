@@ -144,6 +144,7 @@ const memDigests = new Map<string, { generatedAt: string; payload: Digest }>();
 const memBookmarks = new Map<string, string>(); // id -> created_at ISO
 const memCve = new Map<string, CveRef>(); // CVE-ID -> enriched ref
 const memKevSeen = new Map<string, string>(); // CVE-ID -> first_seen ISO
+const memWatchSeen = new Map<string, string>(); // article id -> first_seen ISO
 const memWeekly = new Map<string, { generatedAt: string; report: string }>(); // week_start -> report
 const memKevJa = new Map<string, KevJa>(); // CVE-ID -> Japanese translation
 
@@ -213,6 +214,13 @@ async function ensureSchema(): Promise<void> {
       sql: `CREATE TABLE IF NOT EXISTS kev_seen (
         id TEXT PRIMARY KEY,
         date_added TEXT,
+        first_seen TEXT NOT NULL
+      )`,
+    },
+    {
+      // Article ids already alerted on for a watched keyword (dedup).
+      sql: `CREATE TABLE IF NOT EXISTS watch_seen (
+        id TEXT PRIMARY KEY,
         first_seen TEXT NOT NULL
       )`,
     },
@@ -734,6 +742,40 @@ export async function listBookmarkedArticles(limit: number): Promise<DigestItem[
     },
   ]);
   return (rows ?? []).map(rowToItem);
+}
+
+// ---------------- keyword-alert dedup ----------------
+
+// Register matched article ids as alerted; returns the ids that were NEW.
+export async function markWatchSeen(ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const now = new Date().toISOString();
+  if (!dbEnabled()) {
+    const fresh: string[] = [];
+    for (const id of ids) {
+      if (!memWatchSeen.has(id)) {
+        memWatchSeen.set(id, now);
+        fresh.push(id);
+      }
+    }
+    return fresh;
+  }
+  await ensureSchema();
+  const placeholders = ids.map(() => "?").join(",");
+  const [rows] = await pipeline([
+    { sql: `SELECT id FROM watch_seen WHERE id IN (${placeholders})`, args: ids },
+  ]);
+  const existing = new Set((rows ?? []).map((r) => String(r.id)));
+  const fresh = ids.filter((id) => !existing.has(id));
+  if (fresh.length) {
+    await pipeline(
+      fresh.map((id) => ({
+        sql: `INSERT INTO watch_seen (id, first_seen) VALUES (?, ?) ON CONFLICT(id) DO NOTHING`,
+        args: [id, now],
+      })),
+    );
+  }
+  return fresh;
 }
 
 // ---------------- KEV Japanese translations ----------------
