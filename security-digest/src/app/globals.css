@@ -13,6 +13,27 @@
   --link: #93c5fd;
   --shadow-accent: rgba(74, 222, 128, 0.18);
   --shadow-accent-2: rgba(34, 211, 238, 0.18);
+  --bg-grad: #14202d;
+}
+
+/* Light theme — same variable names, light-friendly palette (accents darkened
+   for contrast on a light background). Toggled via data-theme on <html>. */
+html[data-theme="light"] {
+  --bg: #f6f8fb;
+  --bg-2: #eef2f7;
+  --panel: #ffffff;
+  --panel-2: #f3f6fa;
+  --border: #d4dde8;
+  --text: #1a2430;
+  --text-dim: #5a6b7d;
+  --accent: #0f9d58;
+  --accent-2: #0e8aa8;
+  --warn: #b7791f;
+  --err: #d64545;
+  --link: #1d6fd6;
+  --shadow-accent: rgba(15, 157, 88, 0.18);
+  --shadow-accent-2: rgba(14, 138, 168, 0.18);
+  --bg-grad: #e3ecf5;
 }
 
 * {
@@ -23,7 +44,7 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: radial-gradient(1200px 600px at 50% -200px, #14202d 0%, var(--bg) 60%) no-repeat,
+  background: radial-gradient(1200px 600px at 50% -200px, var(--bg-grad) 0%, var(--bg) 60%) no-repeat,
     var(--bg);
   color: var(--text);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
@@ -57,12 +78,33 @@ a {
   text-decoration: none;
 }
 
-/* ---------- font-size control (fixed top-right; uses px so it stays a
-   constant size regardless of the page scale it controls) ---------- */
-.fontctl {
+/* ---------- display controls (fixed top-right; px so they stay constant
+   regardless of the page scale they control) ---------- */
+.displayctl {
   position: fixed;
   top: 8px;
   right: 8px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.themectl {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(15, 22, 32, 0.9);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1;
+  padding: 6px 9px;
+  cursor: pointer;
+}
+html[data-theme="light"] .themectl,
+html[data-theme="light"] .fontctl {
+  background: rgba(255, 255, 255, 0.9);
+}
+.fontctl {
   z-index: 50;
   display: flex;
   align-items: center;
@@ -319,6 +361,47 @@ a:hover {
   background: rgba(11, 15, 20, 0.25);
 }
 
+/* ---------- secondary filter bar (kind / source / unread) ---------- */
+.filterbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: -8px 0 20px;
+}
+.chips-sm {
+  margin: 0;
+}
+.chips-sm .chip {
+  font-size: 0.75rem;
+  padding: 4px 10px;
+}
+.src-select {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  max-width: 200px;
+}
+.src-select:focus {
+  outline: none;
+  border-color: var(--accent-2);
+}
+
+.read-tag {
+  font-size: 0.625rem;
+  color: var(--accent-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 5px;
+  margin-right: 6px;
+}
+
 .cards {
   list-style: none;
   padding: 0;
@@ -344,6 +427,13 @@ a:hover {
   border-color: var(--accent-2);
   box-shadow: 0 0 0 1px var(--accent-2), 0 0 24px var(--shadow-accent-2);
   transform: translateY(-1px);
+}
+/* read articles dim but stay legible; restore on hover */
+.card.read {
+  opacity: 0.55;
+}
+.card.read:hover {
+  opacity: 1;
 }
 
 .card-head {
