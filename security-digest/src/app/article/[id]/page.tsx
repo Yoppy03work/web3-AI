@@ -33,6 +33,14 @@ function formatJst(iso: string | null): string {
   );
 }
 
+// Collapse blank-line paragraph gaps to a single line break. The body renders
+// with `white-space: pre-wrap`, and both the crawler (paras.join("\n\n")) and
+// the translator (paragraphs separated by blank lines) emit double newlines,
+// which show as an empty line between every paragraph. Tighten to one break.
+function tightenBody(text: string): string {
+  return text.replace(/[ \t]*\r?\n(?:[ \t]*\r?\n)+/g, "\n").trim();
+}
+
 export default async function ArticlePage({ params }: ArticleParams) {
   const { id } = await params;
   const article = await getArticle(id);
@@ -66,6 +74,10 @@ export default async function ArticlePage({ params }: ArticleParams) {
     await patchArticle(id, { bodyJa }).catch(() => {});
   }
   const hasJa = !isJa && bodyJa !== null && bodyJa !== "";
+
+  // Tighten blank-line gaps for display only (logic above already settled).
+  if (hasBody) body = tightenBody(body as string);
+  if (hasJa) bodyJa = tightenBody(bodyJa as string);
 
   return (
     <main className="shell">
