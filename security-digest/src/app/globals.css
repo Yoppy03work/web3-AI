@@ -983,11 +983,18 @@ a:hover {
 }
 
 .body-text {
-  white-space: pre-wrap;
   word-break: break-word;
   font-size: 0.9375rem;
-  line-height: 1.9;
+  line-height: 1.8;
   color: var(--text);
+}
+/* Paragraph writing: one clean line of separation at semantic breaks (the
+   <p> blocks come from blank lines in the body); tight within a paragraph. */
+.body-text p {
+  margin: 0 0 1em;
+}
+.body-text p:last-child {
+  margin-bottom: 0;
 }
 
 .body-text-orig {
