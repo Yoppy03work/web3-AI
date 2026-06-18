@@ -33,12 +33,28 @@ function formatJst(iso: string | null): string {
   );
 }
 
-// Collapse blank-line paragraph gaps to a single line break. The body renders
-// with `white-space: pre-wrap`, and both the crawler (paras.join("\n\n")) and
-// the translator (paragraphs separated by blank lines) emit double newlines,
-// which show as an empty line between every paragraph. Tighten to one break.
-function tightenBody(text: string): string {
-  return text.replace(/[ \t]*\r?\n(?:[ \t]*\r?\n)+/g, "\n").trim();
+// Render body text as proper paragraphs. Both the crawler (paras.join("\n\n"))
+// and the translator emit blank-line–separated paragraphs. We split on blank
+// lines (semantic breaks → keep one gap) and reflow any single newline inside a
+// paragraph to a space (a soft wrap, not a semantic break). `.body-text p` then
+// gives a clean one-line gap, instead of the oversized `pre-wrap` blank line at
+// line-height 1.9 this replaces.
+function toParagraphs(text: string): string[] {
+  return text
+    .replace(/\r\n/g, "\n")
+    .split(/\n[ \t]*\n+/)
+    .map((p) => p.replace(/[ \t]*\n[ \t]*/g, " ").trim())
+    .filter((p) => p.length > 0);
+}
+
+function BodyText({ text, orig = false }: { text: string; orig?: boolean }) {
+  return (
+    <div className={orig ? "body-text body-text-orig" : "body-text"}>
+      {toParagraphs(text).map((p, i) => (
+        <p key={i}>{p}</p>
+      ))}
+    </div>
+  );
 }
 
 export default async function ArticlePage({ params }: ArticleParams) {
@@ -74,10 +90,6 @@ export default async function ArticlePage({ params }: ArticleParams) {
     await patchArticle(id, { bodyJa }).catch(() => {});
   }
   const hasJa = !isJa && bodyJa !== null && bodyJa !== "";
-
-  // Tighten blank-line gaps for display only (logic above already settled).
-  if (hasBody) body = tightenBody(body as string);
-  if (hasJa) bodyJa = tightenBody(bodyJa as string);
 
   return (
     <main className="shell">
@@ -150,9 +162,9 @@ export default async function ArticlePage({ params }: ArticleParams) {
 
           {isJa && hasBody ? (
             // Native Japanese — crawled body shown as-is.
-            <div className="body-text">{body}</div>
+            <BodyText text={body as string} />
           ) : hasJa ? (
-            <div className="body-text">{bodyJa}</div>
+            <BodyText text={bodyJa as string} />
           ) : hasBody ? (
             <>
               <p className="hint">
@@ -160,7 +172,7 @@ export default async function ArticlePage({ params }: ArticleParams) {
                   ? "（本文の日本語訳に失敗したため原文を表示）"
                   : "（LLM 無効のため翻訳できません。原文を表示）"}
               </p>
-              <div className="body-text">{body}</div>
+              <BodyText text={body as string} />
             </>
           ) : (
             <p className="empty">
@@ -171,7 +183,7 @@ export default async function ArticlePage({ params }: ArticleParams) {
           {!isJa && hasJa && hasBody ? (
             <details className="orig-toggle">
               <summary>原文（English）を表示</summary>
-              <div className="body-text body-text-orig">{body}</div>
+              <BodyText text={body as string} orig />
             </details>
           ) : null}
         </section>
