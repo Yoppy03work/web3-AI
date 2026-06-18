@@ -58,19 +58,19 @@ body {
    (components/FontSizeControl) sets data-font on <html>; every text size is in
    rem, so the whole page scales proportionally. */
 html {
-  font-size: 16px;
+  font-size: 20px;
 }
 html[data-font="sm"] {
-  font-size: 14px;
-}
-html[data-font="md"] {
-  font-size: 16px;
-}
-html[data-font="lg"] {
   font-size: 18px;
 }
-html[data-font="xl"] {
+html[data-font="md"] {
   font-size: 20px;
+}
+html[data-font="lg"] {
+  font-size: 22px;
+}
+html[data-font="xl"] {
+  font-size: 24px;
 }
 
 a {
