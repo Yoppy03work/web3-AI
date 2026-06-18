@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import { getDigest } from "@/lib/digest";
+import { getDigest, prewarmArticleBodies } from "@/lib/digest";
 import { checkKevAlerts } from "@/lib/kevAlert";
 import { checkKeywordAlerts } from "@/lib/keywordAlert";
 import { prewarmKevJa } from "@/lib/kevJa";
@@ -72,6 +72,11 @@ export async function GET(request: Request) {
         await checkKevAlerts().catch(() => {});
         // Pre-translate the /cve page's visible window so views are cache-hits.
         await prewarmKevJa().catch(() => {});
+        // Pre-warm the top articles' body + JA translation so the first detail
+        // visit (e.g. clicking a Slack-alert link) is a fast Turso read instead
+        // of a live crawl + LLM. Runs LAST and is hard-bounded by its own budget
+        // so it can never starve the alerts above or breach the 60s wall.
+        await prewarmArticleBodies(digest.items).catch(() => {});
       });
     }
 

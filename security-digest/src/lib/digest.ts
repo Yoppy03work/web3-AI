@@ -1,7 +1,7 @@
 import { articleId } from "./id";
 import { computeClusters } from "./cluster";
 import { extractCveIds, fetchCvss, topSeverity } from "./cve";
-import { extractOgImage } from "./extract";
+import { extractBody, extractOgImage } from "./extract";
 import { diversify, fetchAllFeeds } from "./rss";
 import { SOURCES, TAGS, tagsFor } from "./sources";
 import {
@@ -17,7 +17,13 @@ import {
   saveDigest,
   snapshotKey,
 } from "./db";
-import { llmEnabled, summarizeBatch, summarizeReport, summarizeTldr } from "./summarize";
+import {
+  llmEnabled,
+  summarizeBatch,
+  summarizeReport,
+  summarizeTldr,
+  translateLong,
+} from "./summarize";
 import type { CveRef, Digest, DigestItem, Edition, RawItem } from "./types";
 
 const DEFAULT_MAX_ITEMS = 18;
@@ -354,6 +360,90 @@ export async function patchArticle(
     if (it) Object.assign(it, patch);
   }
   await patchArticleRow(id, patch);
+}
+
+// ---------------- detail-body pre-warming ----------------
+
+// How many of the top (most-severe) articles to pre-warm per refresh, and the
+// wall-clock budget for the whole pass. Both env-tunable.
+const DEFAULT_PREWARM_BODIES = 3;
+const DEFAULT_PREWARM_BUDGET_MS = 20_000;
+// Don't START a NEW article unless at least this much budget remains — a fresh
+// one needs at least a crawl (extractBody self-caps at 8s). Within an article we
+// always run crawl -> translate to completion with NO mid-article gate: each op
+// self-caps (8s / 25s) and the function's 60s wall is the real backstop, so a
+// kill mid-op just leaves the field null (= not attempted, retried later). That
+// is deliberately preferred over a fine-grained reserve that would strand a
+// crawled body without its translation (the translation is the whole point —
+// it's the ~25s long pole the first visitor would otherwise pay).
+const PREWARM_ITEM_RESERVE_MS = 8_000;
+
+// Pre-warm detail bodies for the most important items so the first visit to a
+// top article is a fast Turso read instead of a live crawl + LLM translate
+// (otherwise paid lazily on first open: up to ~8s + ~25s).
+//
+// Meant to run inside the refresh's after() block, which shares the function's
+// 60s budget — buildDigest already consumes most of it, so this is strictly
+// best-effort and HARD-bounded:
+//   - `items` must be in severity order (digest.items already is), so the
+//     budget is always spent on the most important article first
+//   - a wall-clock deadline is checked before starting each ARTICLE; we bail
+//     once the remaining budget can't cover at least a crawl
+//   - capacity is small by design (typically ~1 article fully: body + JA); the
+//     60s function wall is the hard backstop and a kill mid-op is safe (null)
+//
+// Storage convention matches the detail page exactly:
+//   null = not attempted, "" = attempted+failed (don't retry), text = ok.
+// We only fill gaps and only persist a function's actual return value, so a
+// function-wall kill mid-op leaves the field null (safe to retry). Never throws.
+export async function prewarmArticleBodies(
+  items: DigestItem[],
+  opts?: { max?: number; budgetMs?: number },
+): Promise<void> {
+  if (items.length === 0) return;
+  const max = opts?.max ?? readInt("PREWARM_BODIES", DEFAULT_PREWARM_BODIES);
+  const budgetMs =
+    opts?.budgetMs ?? readInt("PREWARM_BUDGET_MS", DEFAULT_PREWARM_BUDGET_MS);
+  if (max <= 0 || budgetMs <= 0) return;
+
+  const deadline = Date.now() + budgetMs;
+  const canTranslate = llmEnabled();
+  let warmed = 0;
+
+  for (const it of items) {
+    if (warmed >= max) break;
+    // Not enough budget left to start another article → stop. Items are
+    // severity-sorted, so nothing further down is worth the remaining time.
+    if (Date.now() + PREWARM_ITEM_RESERVE_MS > deadline) break;
+
+    const row = await getArticleRow(it.id).catch(() => null);
+    let body = row?.body ?? null;
+    let bodyJa = row?.bodyJa ?? null;
+    const isJa = it.lang === "ja";
+    let didWork = false;
+
+    // 1) Body crawl — only if never attempted.
+    if (body == null) {
+      const fetched = await extractBody(it.link).catch(() => null);
+      body = fetched ?? "";
+      await patchArticle(it.id, { body }).catch(() => {});
+      didWork = true;
+    }
+    const hasBody = body !== null && body !== "";
+
+    // 2) Translation (English sources only) — needs a body and not yet
+    //    translated. Run to completion: translateLong self-caps at 25s and the
+    //    function wall backstops, so we never strand a crawled body un-translated
+    //    just to respect a soft budget (a kill leaves bodyJa null = retried).
+    if (canTranslate && !isJa && hasBody && bodyJa == null) {
+      const translated = await translateLong(body as string).catch(() => null);
+      bodyJa = translated ?? "";
+      await patchArticle(it.id, { bodyJa }).catch(() => {});
+      didWork = true;
+    }
+
+    if (didWork) warmed++;
+  }
 }
 
 // Returns snapshot KEYS ("YYYY-MM-DD#edition"), newest first.
