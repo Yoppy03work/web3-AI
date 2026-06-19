@@ -29,7 +29,7 @@ export type KevData = {
 
 let cache: KevData | null = null;
 
-function daysAgoIso(days: number): string {
+export function daysAgoIso(days: number): string {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - days);
   return d.toISOString().slice(0, 10);

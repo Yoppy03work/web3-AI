@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getKev } from "@/lib/kev";
+import { computeVendorStats, computeWeeklyStats } from "@/lib/kevStats";
 import { enrichCveIds } from "@/lib/digest";
 import { articlesMentioningCves, type KevJa } from "@/lib/db";
 import { ensureKevJa } from "@/lib/kevJa";
@@ -33,6 +34,11 @@ export default async function CvePage() {
   const shown = kev.entries.slice(0, SHOW);
   const ids = shown.map((e) => e.cveID);
 
+  // Trend stats over the FULL catalog (not just the shown top-50).
+  const weekly = computeWeeklyStats(kev.entries, 12);
+  const vendors = computeVendorStats(kev.entries, 90, 15);
+  const weekMax = Math.max(1, ...weekly.map((w) => w.total));
+
   // CVSS (cache-first, small NVD budget) + our own coverage cross-reference
   // + Japanese translations (cache-first; ≤12 new ones translated per view,
   // and the cron prewarms the cache so this is usually all cache hits).
@@ -64,6 +70,62 @@ export default async function CvePage() {
           <span className="pill err">🦠 ランサム悪用 {kev.ransomwareCount}</span>
         </div>
       </header>
+
+      {kev.entries.length > 0 ? (
+        <section className="kev-trends">
+          <div className="kev-card">
+            <div className="kev-card-h">📈 KEV 登録数（過去12週）</div>
+            <svg
+              className="kev-spark"
+              viewBox="0 0 360 64"
+              preserveAspectRatio="none"
+              role="img"
+              aria-label="過去12週のKEV週次登録数"
+            >
+              {weekly.map((w, i) => {
+                const totalH = (w.total / weekMax) * 46;
+                const ransH = (w.ransomware / weekMax) * 46;
+                const x = i * 30 + 5;
+                return (
+                  <g key={w.weekStart}>
+                    <rect x={x} y={58 - totalH} width={20} height={totalH} className="spark-total" />
+                    {ransH > 0 ? (
+                      <rect x={x} y={58 - ransH} width={20} height={ransH} className="spark-ransom" />
+                    ) : null}
+                  </g>
+                );
+              })}
+              <line x1="0" y1="58" x2="360" y2="58" className="spark-base" />
+            </svg>
+            <div className="kev-card-foot">
+              <span>
+                最新週 <b>{weekly[weekly.length - 1].total}</b> 件（🦠 {weekly[weekly.length - 1].ransomware}）
+              </span>
+              <span className="dim">青=登録 / 赤=ランサム</span>
+            </div>
+          </div>
+
+          {vendors.vendors.length > 0 ? (
+            <div className="kev-card">
+              <div className="kev-card-h">🏢 ベンダー別 KEV（過去90日・上位{vendors.vendors.length}）</div>
+              <ul className="vendor-list">
+                {vendors.vendors.map((v) => (
+                  <li key={v.vendor} className="vendor-row">
+                    <span className="vendor-name" title={v.vendor}>{v.vendor}</span>
+                    <span className="vendor-bar">
+                      <span
+                        className="vendor-fill"
+                        style={{ width: `${(v.count / vendors.max) * 100}%` }}
+                      />
+                    </span>
+                    <span className="vendor-count">{v.count}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       {shown.length === 0 ? (
         <p className="empty">KEV を取得できませんでした。時間をおいて再読み込みしてください。</p>
