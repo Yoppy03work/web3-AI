@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getDigest } from "@/lib/digest";
 import { getBookmarkedIds } from "@/lib/db";
+import { getChangesSinceLastEdition } from "@/lib/changeSummary";
 import { SOURCES } from "@/lib/sources";
 import FeedClient from "@/components/FeedClient";
 
@@ -22,7 +23,11 @@ function formatJst(iso: string): string {
 
 export default async function Page() {
   const digest = await getDigest();
-  const savedIds = Array.from(await getBookmarkedIds().catch(() => new Set<string>()));
+  const [savedSet, changes] = await Promise.all([
+    getBookmarkedIds().catch(() => new Set<string>()),
+    getChangesSinceLastEdition(digest).catch(() => null),
+  ]);
+  const savedIds = Array.from(savedSet);
 
   return (
     <main className="shell">
@@ -95,6 +100,23 @@ export default async function Page() {
               })}
             </div>
           </details>
+        ) : null}
+
+        {changes && changes.hasPrev && (changes.newCount > 0 || changes.sourceDeltas.length > 0) ? (
+          <div className="changes">
+            <span className="changes-label">前版比</span>
+            <div className="changes-body">
+              <span className="changes-new">新規 {changes.newCount}件</span>
+              {changes.sourceDeltas.slice(0, 8).map((d) => (
+                <span key={d.source} className="changes-delta">
+                  {d.source} {d.prev}→{d.now}
+                  <span className={d.now >= d.prev ? "delta-up" : "delta-down"}>
+                    {d.now > d.prev ? `+${d.now - d.prev}` : d.now - d.prev}
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
         ) : null}
       </header>
 

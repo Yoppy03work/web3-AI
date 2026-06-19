@@ -1216,3 +1216,45 @@ a:hover {
   color: var(--text-dim);
   font-size: 0.75rem;
 }
+
+/* ---------- 変化サマリ (home) ---------- */
+.changes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.changes-label {
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--accent-2);
+  white-space: nowrap;
+}
+.changes-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+}
+.changes-new {
+  color: var(--text);
+  font-weight: 600;
+}
+.changes-delta {
+  white-space: nowrap;
+}
+.changes-delta .delta-up {
+  color: var(--accent);
+  margin-left: 3px;
+}
+.changes-delta .delta-down {
+  color: var(--warn);
+  margin-left: 3px;
+}
