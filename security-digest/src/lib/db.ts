@@ -18,6 +18,7 @@
 import type {
   CveRef,
   CvssSeverity,
+  DatedItem,
   DigestItem,
   Digest,
   RelatedRef,
@@ -995,4 +996,21 @@ export async function articlesSince(dateFrom: string): Promise<DigestItem[]> {
     },
   ]);
   return (rows ?? []).map(rowToItem);
+}
+
+// Like articlesSince, but each item carries its digest_date (the JST ingest
+// day) — needed by cross-day features for an accurate timeline. The in-memory
+// dev fallback keeps no digest_date, so it returns nothing (cross-day grouping
+// is a no-op without SQL rather than mislabeling days).
+export async function articlesSinceWithDate(dateFrom: string): Promise<DatedItem[]> {
+  if (!dbEnabled()) return [];
+  await ensureSchema();
+  const [rows] = await pipeline([
+    {
+      sql: `SELECT * FROM articles WHERE digest_date >= ?
+            ORDER BY digest_date DESC, published_at DESC LIMIT 300`,
+      args: [dateFrom],
+    },
+  ]);
+  return (rows ?? []).map((r) => ({ ...rowToItem(r), digestDate: String(r.digest_date) }));
 }
