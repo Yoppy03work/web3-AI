@@ -60,6 +60,11 @@ export type DigestItem = RawItem & {
   image: string | null;
 };
 
+// A DigestItem tagged with the JST digest date it was ingested on. Used for
+// cross-day features (e.g. incident story tracking) where the timeline day must
+// come from digest_date, not the nullable source publishedAt.
+export type DatedItem = DigestItem & { digestDate: string };
+
 export type Edition = "morning" | "evening";
 
 export type Digest = {

@@ -9,7 +9,9 @@ import { topSeverity } from "./cve";
 import { notifyWeekly } from "./notify";
 import { summarizeWeekly } from "./summarize";
 
-function jstToday(): Date {
+// Shared JST date helpers (exported so cross-day features — weekly, incidents,
+// KEV trends — agree on day/week boundaries instead of each rolling their own).
+export function jstToday(): Date {
   // A Date whose Y/M/D fields (in UTC) equal today's JST calendar date.
   const s = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
@@ -20,8 +22,18 @@ function jstToday(): Date {
   return new Date(`${s}T00:00:00Z`);
 }
 
-function isoDate(d: Date): string {
+export function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+// Monday (UTC) of the ISO week containing the given "YYYY-MM-DD" date. The date
+// is treated as a plain calendar date in UTC (NOT JST-shifted), so a +09:00
+// parse must not be used here or boundary dates mis-bucket.
+export function mondayOf(isoDateStr: string): string {
+  const d = new Date(`${isoDateStr}T00:00:00Z`);
+  const sinceMonday = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - sinceMonday);
+  return isoDate(d);
 }
 
 export function jstIsSunday(): boolean {
@@ -35,12 +47,7 @@ export function jstIsSunday(): boolean {
 // Monday (JST) of the week containing today. On Sunday this is 6 days back, so
 // the Sunday-evening run covers Mon..Sun of the closing week.
 export function currentWeekStart(): string {
-  const today = jstToday();
-  const dow = today.getUTCDay(); // 0=Sun..6=Sat
-  const sinceMonday = (dow + 6) % 7;
-  const monday = new Date(today);
-  monday.setUTCDate(monday.getUTCDate() - sinceMonday);
-  return isoDate(monday);
+  return mondayOf(isoDate(jstToday()));
 }
 
 export function weekRangeLabel(weekStart: string): string {

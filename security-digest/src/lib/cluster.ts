@@ -35,7 +35,7 @@ const STOP = new Set([
   "evaluation", "robust", "adversarial", "language", "large", "generative",
 ]);
 
-function sigTokens(it: DigestItem): Set<string> {
+export function sigTokens(it: DigestItem): Set<string> {
   const s = new Set<string>();
   for (const c of it.cves ?? []) s.add(c.id.toUpperCase());
   const text = it.title.toLowerCase();
@@ -47,7 +47,7 @@ function sigTokens(it: DigestItem): Set<string> {
 }
 
 // Linked if they share a CVE, or ≥2 distinctive (non-stopword) title tokens.
-function linked(a: Set<string>, b: Set<string>): boolean {
+export function linked(a: Set<string>, b: Set<string>): boolean {
   let cve = 0;
   let words = 0;
   for (const t of a) {

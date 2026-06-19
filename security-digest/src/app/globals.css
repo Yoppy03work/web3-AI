@@ -1105,3 +1105,114 @@ a:hover {
 .archive-item .tags {
   margin-top: 6px;
 }
+
+/* ---------- ストーリー追跡 (/incidents) ---------- */
+.lead {
+  color: var(--text-dim);
+  font-size: 0.9062rem;
+  line-height: 1.7;
+  margin: 6px 0 0;
+}
+.incidents {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.incident {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+.incident-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.incident-title {
+  font-size: 1.0625rem;
+  font-weight: 650;
+  line-height: 1.4;
+  color: var(--text);
+  margin: 0;
+}
+.incident-span {
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+.incident-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.timeline {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0 0 0 4px;
+}
+.tl-day {
+  position: relative;
+  padding: 0 0 14px 16px;
+  border-left: 2px solid var(--border);
+}
+.tl-day:last-child {
+  border-left-color: transparent;
+  padding-bottom: 0;
+}
+.tl-day::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-2);
+}
+.tl-marker {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.tl-date {
+  font-size: 0.8125rem;
+  font-weight: 650;
+  color: var(--text);
+}
+.tl-label {
+  font-size: 0.75rem;
+  color: var(--accent-2);
+}
+.tl-items {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+.tl-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+}
+.tl-link {
+  color: var(--link);
+  text-decoration: none;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.tl-link:hover {
+  text-decoration: underline;
+}
+.tl-src {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+}
