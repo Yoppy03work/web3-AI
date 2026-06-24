@@ -13,6 +13,11 @@ export const SOURCES: Source[] = [
   { name: "Schneier on Security", url: "https://www.schneier.com/feed/atom/", kind: "news" },
   // 日本語ソース: RSS抜粋が既に日本語なので LLM 要約/翻訳をスキップ（lang:"ja"）。
   { name: "Security NEXT", url: "https://www.security-next.com/feed", kind: "news", lang: "ja" },
+  // IPA 重要なセキュリティ情報（緊急対策情報・注意喚起）。RSS 1.0/RDF だが既存の
+  // <item> 経路でそのまま解釈できる。description が無く抜粋は空だが、タイトルが
+  // 製品名+CVE 入りで説明的（CVE抽出・タグ付けはタイトルから効く）、本文は詳細
+  // ページでクロール表示する。
+  { name: "IPA 重要なセキュリティ情報", url: "https://www.ipa.go.jp/security/alert-rss.rdf", kind: "news", lang: "ja" },
 
   // ---- research (Black Hat lacks an RSS feed; these are the closest in caliber) ----
   { name: "Google Project Zero", url: "https://googleprojectzero.blogspot.com/feeds/posts/default", kind: "research" },
