@@ -1,0 +1,41 @@
+name: Scheduled digest refresh
+
+# Vercel Hobby の cron 2本枠（07:00 / 19:00 JST）に加えて、GitHub Actions の
+# 無料スケジュールから追加リフレッシュを叩く（昼の更新・KEV速報の前倒し等）。
+#
+# 重要・コスト: リフレッシュ1回ごとにアプリ側で Anthropic API 課金が発生する
+# （既存の朝夕 cron と同じ1回分）。回数を増やすほどコストが増える。
+#
+# 安全装置: リポジトリに Secret `CRON_SECRET` を登録するまで、下の curl ステップは
+# `if` ガードで丸ごとスキップされる（リクエストすら送らない＝無課金）。有効化する
+# には GitHub → Settings → Secrets and variables → Actions に、Vercel と同じ値の
+# `CRON_SECRET` を追加するだけ。頻度を変えるなら下の cron 行を編集する。
+on:
+  schedule:
+    # 03:00 UTC = 12:00 JST。GitHub の schedule は数分〜十数分遅れることがある。
+    - cron: "0 3 * * *"
+  workflow_dispatch: {} # 手動実行ボタン（Actions タブ）
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    env:
+      APP_URL: https://web3-ai-c2az.vercel.app
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Trigger refresh
+        if: ${{ env.CRON_SECRET != '' }}
+        run: |
+          echo "Refreshing ${APP_URL} ..."
+          code=$(curl -sS -o /dev/null -w "%{http_code}" -m 120 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL}/api/digest?refresh=1")
+          echo "HTTP ${code}"
+          test "${code}" = "200"
+      - name: Skipped (no secret → no paid refresh)
+        if: ${{ env.CRON_SECRET == '' }}
+        run: |
+          echo "CRON_SECRET is not set in repo secrets — skipping."
+          echo "No request was sent, so no paid refresh occurred."
+          echo "To enable: add a CRON_SECRET secret (same value as Vercel) in"
+          echo "Settings → Secrets and variables → Actions."
