@@ -1,0 +1,28 @@
+name: CI
+
+# 型チェック + 本番ビルドを PR と main push で自動実行。秘密情報・課金は一切不要。
+# アプリはリポジトリ直下の security-digest/ サブディレクトリにある。
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: security-digest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: security-digest/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Type check
+        run: npx tsc --noEmit
+      - name: Build
+        run: npm run build
